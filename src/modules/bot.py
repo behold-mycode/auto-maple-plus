@@ -7,7 +7,7 @@ import cv2
 import inspect
 import importlib
 import traceback
-from interception import press
+from src.common.arduino_input import press
 from os.path import splitext, basename
 from src.common import config, utils
 from src.routine import components

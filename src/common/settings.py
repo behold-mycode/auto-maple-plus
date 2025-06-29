@@ -78,10 +78,26 @@ def reset():
     """Resets all settings to their default values."""
 
     global move_tolerance, adjust_tolerance, record_layout, buff_cooldown
+    global arduino_port, arduino_baud
+    global maple_window_left, maple_window_top, maple_window_width, maple_window_height
+    global use_manual_window_position, use_hotkey_window_selection
+    
     move_tolerance = 0.075
     adjust_tolerance = 0.01
     record_layout = False
     buff_cooldown = 180
+    
+    # Arduino Configuration
+    arduino_port = "/dev/cu.usbmodemHIDPC1"  # Auto-detect if None
+    arduino_baud = 115200
+    
+    # Window Position Configuration
+    use_manual_window_position = False
+    use_hotkey_window_selection = True
+    maple_window_left = 0
+    maple_window_top = 0
+    maple_window_width = 1366
+    maple_window_height = 768
 
 
 # The allowed error from the destination when moving towards a Point
@@ -95,5 +111,26 @@ record_layout = False
 
 # The amount of time (in seconds) to wait between each call to the 'buff' command
 buff_cooldown = 180
+
+# === Arduino Configuration ===
+# Serial port for Arduino (auto-detected if None)
+arduino_port = "/dev/cu.usbmodemHIDPC1"
+
+# Baud rate for Arduino serial communication
+arduino_baud = 115200
+
+# === Window Position Configuration ===
+# Set to True to use manual window position instead of auto-detection
+use_manual_window_position = False
+
+# Set to True to enable hotkey window selection (press F12 to select window)
+use_hotkey_window_selection = True
+
+# Manual window position (only used if use_manual_window_position = True)
+# These are the coordinates of your MapleStory window on screen
+maple_window_left = 0      # X coordinate of window's left edge
+maple_window_top = 0       # Y coordinate of window's top edge  
+maple_window_width = 1366  # Width of MapleStory window
+maple_window_height = 768  # Height of MapleStory window
 
 reset()

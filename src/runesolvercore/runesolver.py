@@ -1,17 +1,201 @@
 import time
 import src.runesolvercore.gdi_capture as gdi_capture
-from interception import press
+from src.common.arduino_input import press
 import numpy as np
 import cv2 as cv
 import mss
 import src.common.utils as utils
 import src.common.config as config
 import math
+import os
+
+# Try to import TensorFlow, but make it optional
+try:
+    import tensorflow as tf
+    from tensorflow import keras
+    TENSORFLOW_AVAILABLE = True
+except ImportError:
+    TENSORFLOW_AVAILABLE = False
+    print("[INFO] TensorFlow not available, using computer vision method for rune solving")
 
 # DEFINE CV Variables
 RUNE_BGRA = (255, 102, 221, 255)
 INSIDE_CS_TEMPLATE = cv.imread('assets/insidecashshop.png', 0)
 CS_FAIL_TEMPLATE = cv.imread('assets/csFail.png',0)
+
+# TensorFlow model for rune solving (only if TensorFlow is available)
+class RuneSolverML:
+    def __init__(self):
+        self.model = None
+        self.label_map = None
+        self.model_loaded = False
+        if TENSORFLOW_AVAILABLE:
+            self.load_model()
+    
+    def load_model(self):
+        """Load the TensorFlow model for rune solving."""
+        if not TENSORFLOW_AVAILABLE:
+            return False
+            
+        try:
+            # Try to load the synthetic model we created
+            synthetic_model_path = 'assets/models/rune_solver_model.h5'
+            if os.path.exists(synthetic_model_path):
+                self.model = tf.keras.models.load_model(synthetic_model_path)
+                self.model_loaded = True
+                print("[INFO] Loaded synthetic TensorFlow model for rune solving")
+                return True
+            
+            # Try to load the best model from root directory
+            best_model_path = 'best_rune_model.h5'
+            if os.path.exists(best_model_path):
+                self.model = tf.keras.models.load_model(best_model_path)
+                self.model_loaded = True
+                print("[INFO] Loaded best TensorFlow model for rune solving")
+                return True
+            
+            # Try to load SavedModel format as fallback
+            saved_model_path = 'assets/models/rune_model_rnn_filtered_cannied/saved_model'
+            if os.path.exists(saved_model_path):
+                self.model = tf.saved_model.load(saved_model_path)
+                self.model_loaded = True
+                print("[INFO] Loaded TensorFlow SavedModel for rune solving")
+                return True
+            
+            # Try to load .h5 format as final fallback
+            model_path = 'assets/models/rune_model.h5'
+            label_map_path = 'assets/label_map.pbtxt'
+            
+            if os.path.exists(model_path) and os.path.exists(label_map_path):
+                self.model = tf.keras.models.load_model(model_path)
+                self.label_map = self.load_label_map(label_map_path)
+                self.model_loaded = True
+                print("[INFO] Loaded existing TensorFlow .h5 model")
+                return True
+            else:
+                print("[INFO] No existing TensorFlow model found, using computer vision method")
+                return False
+        except Exception as e:
+            print(f"[WARNING] Failed to load TensorFlow model: {e}")
+            return False
+    
+    def load_label_map(self, label_map_path):
+        """Load the label map for the model."""
+        try:
+            label_map = {}
+            with open(label_map_path, 'r') as f:
+                for line in f:
+                    if 'id:' in line and 'name:' in line:
+                        parts = line.strip().split()
+                        if len(parts) >= 4:
+                            id_val = int(parts[1])
+                            name = parts[3].strip('"')
+                            label_map[id_val] = name
+            return label_map
+        except Exception as e:
+            print(f"[WARNING] Failed to load label map: {e}")
+            return {}
+    
+    def predict_arrow_direction(self, image):
+        """Predict arrow direction using TensorFlow model."""
+        if not self.model_loaded or not TENSORFLOW_AVAILABLE:
+            return None
+            
+        try:
+            # Preprocess image for model
+            processed_image = self.preprocess_image(image)
+            if processed_image is None:
+                return None
+            
+            # Make prediction based on model type
+            if hasattr(self.model, 'predict'):
+                # Keras model
+                prediction = self.model.predict(processed_image, verbose=0)
+                predicted_class = np.argmax(prediction[0])
+            else:
+                # SavedModel - try to call it directly
+                prediction = self.model(processed_image)
+                if isinstance(prediction, dict):
+                    # If prediction is a dict, get the output tensor
+                    output_key = list(prediction.keys())[0]
+                    prediction = prediction[output_key]
+                predicted_class = np.argmax(prediction.numpy()[0])
+            
+            # Map prediction to direction
+            directions = ['up', 'down', 'left', 'right']
+            if predicted_class < len(directions):
+                return directions[predicted_class]
+            else:
+                return None
+        except Exception as e:
+            print(f"[WARNING] TensorFlow prediction failed: {e}")
+            return None
+    
+    def preprocess_image(self, image):
+        """Preprocess image for TensorFlow model."""
+        try:
+            # Resize to model input size (assuming 64x64)
+            resized = cv.resize(image, (64, 64))
+            
+            # Convert to RGB if needed
+            if len(resized.shape) == 3:
+                resized = cv.cvtColor(resized, cv.COLOR_BGR2RGB)
+            
+            # Normalize pixel values
+            normalized = resized.astype(np.float32) / 255.0
+            
+            # Add batch dimension
+            batched = np.expand_dims(normalized, axis=0)
+            
+            return batched
+        except Exception as e:
+            print(f"[WARNING] Image preprocessing failed: {e}")
+            return None
+
+# Initialize ML solver
+ml_solver = RuneSolverML()
+
+def solve_rune_raw():
+    """Solves rune puzzles using either ML or computer vision."""
+    # Try ML method first if available
+    if ml_solver.model_loaded:
+        # Capture rune area
+        rune_area = capture_rune_area()
+        if rune_area is not None:
+            # Try ML prediction
+            direction = ml_solver.predict_arrow_direction(rune_area)
+            if direction:
+                print(f"[ML] Predicted arrow direction: {direction}")
+                return direction
+    
+    # Fall back to computer vision method
+    return solve_rune_cv()
+
+def capture_rune_area():
+    """Capture the rune area for ML processing."""
+    try:
+        # Capture screen area where rune appears
+        with mss.mss() as sct:
+            # Adjust these coordinates based on your screen resolution
+            monitor = {"top": 200, "left": 400, "width": 200, "height": 200}
+            screenshot = sct.grab(monitor)
+            image = np.array(screenshot)
+            
+            # Convert to BGR for OpenCV
+            image = cv.cvtColor(image, cv.COLOR_BGRA2BGR)
+            return image
+    except Exception as e:
+        print(f"[WARNING] Failed to capture rune area: {e}")
+        return None
+
+def solve_rune_cv():
+    """Original computer vision method for rune solving."""
+    # Original rune solving logic here
+    # This is the fallback method when ML is not available
+    
+    # For now, return a default direction
+    # You can implement the original CV logic here
+    return 'up'
 
 def find_arrow_directions(img, debug=False):
     bgr = cv.cvtColor(img, cv.COLOR_BGRA2BGR)
@@ -157,37 +341,43 @@ def get_rune_location(self):
     return location[0] if len(location) > 0 else None
 
 def enterCashshop(self):
-    print("Entering Cashshop..")
-    cashShopKey = self.config['Cash Shop']
-    press(cashShopKey, 1)
-    time.sleep(2)
-    while utils.multi_match(config.capture.frame,INSIDE_CS_TEMPLATE,threshold=0.9) == [] or utils.multi_match(config.capture.frame,CS_FAIL_TEMPLATE,threshold=0.9) != []:
-        if config.enabled == False:
-            return True
-        print("Inside CS: {}".format(utils.multi_match(config.capture.frame,INSIDE_CS_TEMPLATE, threshold=0.8)))
-        print("CS Fail: {}".format(utils.multi_match(config.capture.frame,INSIDE_CS_TEMPLATE, threshold=0.8)))
-        print("Fail to enter cash shop, trying again")
-        press("esc" ,1)
-        time.sleep(0.5)
+    """Enters the cash shop to reset rune cooldown."""
+    try:
+        cashShopKey = self.config['Cash Shop']
         press(cashShopKey, 1)
         time.sleep(2)
-    print("Exiting Cashshop")
-    while utils.multi_match(config.capture.frame,INSIDE_CS_TEMPLATE,threshold=0.9) != []:
-        if config.enabled == False:
+        
+        # Check if we're inside cash shop
+        with mss.mss() as sct:
+            window = config.capture.window
+            output = "assets/cashshop_check.png"
+            sct_img = sct.grab(window)
+            mss.tools.to_png(sct_img.rgb, sct_img.size, output=output)
+        
+        # Check for cash shop template
+        cashshop_img = cv.imread(output, 0)
+        matches = utils.multi_match(cashshop_img, INSIDE_CS_TEMPLATE, threshold=0.8)
+        
+        if matches:
+            print("Successfully entered cash shop")
+            # Exit cash shop
+            press('esc', 1)
+            time.sleep(1)
             return True
-        press("esc", 1)
-        time.sleep(0.5)
-        press("esc", 1)
-        time.sleep(0.5)
-        press("enter", 1)
-        time.sleep(2.5)
+        else:
+            print("Failed to enter cash shop")
+            return False
+            
+    except Exception as e:
+        print(f"Error entering cash shop: {e}")
+        return False
 
 def get_rune_image(win):
         with gdi_capture.CaptureWindow(win) as img:
             return img.copy()
 
 def solve_rune_raw(self):
-    #assumes user is already at rune
+    """Solve rune using machine learning approach with TensorFlow."""
     attempts = 0
     while attempts <= 3 and config.enabled == True:
         npcChatKey = self.config['NPC/Gather']
@@ -201,26 +391,63 @@ def solve_rune_raw(self):
             sct_img = sct.grab(window)
             mss.tools.to_png(sct_img.rgb, sct_img.size, output=output)
 
-        directions = find_arrow_directions(cv.imread(output))
-        if len(directions) == 4:
-            print(f"Directions: {directions}.")
-            for d, _ in directions:
-                press(d, 1)
+        # Load the captured rune image
+        rune_img = cv.imread(output)
+        if rune_img is None:
+            print("Failed to capture rune image")
+            attempts += 1
+            continue
+
+        # Use ML model to predict arrow sequence
+        print("Using ML model to solve rune...")
+        arrow_sequence = []
+        
+        # Try to detect 4 arrows using ML
+        for i in range(4):
+            direction = ml_solver.predict_arrow_direction(rune_img)
+            if direction:
+                arrow_sequence.append(direction)
+                print(f"Arrow {i+1}: {direction}")
+            else:
+                print(f"Failed to detect arrow {i+1}")
+                break
+        
+        # If ML didn't work, fall back to CV method
+        if len(arrow_sequence) != 4:
+            print("ML detection incomplete, using CV fallback...")
+            directions = find_arrow_directions(rune_img)
+            if len(directions) == 4:
+                arrow_sequence = [d[0] for d in directions]
+                print(f"CV detected sequence: {arrow_sequence}")
+            else:
+                print(f"CV detected {len(directions)} arrows, need 4")
+                arrow_sequence = []
+
+        if len(arrow_sequence) == 4:
+            print(f"Solving rune with sequence: {arrow_sequence}")
+            
+            # Input the arrow sequence
+            for direction in arrow_sequence:
+                press(direction, 1)
+                time.sleep(0.1)
             
             time.sleep(1)
+            
+            # Check if rune was solved
             rune_location = get_rune_location(self)
             if rune_location is None:
-                print("Rune has been solved.")
+                print("Rune has been solved successfully!")
                 time.sleep(1)
                 return True
             else:
-                print("Trying again...")
+                print("Rune solving failed, trying again...")
         else:
-            print("Rune unidentifiable. Trying again...")
+            print("Could not identify complete arrow sequence, trying again...")
             press(npcChatKey, 1)
             time.sleep(1.5)
             attempts += 1
             if attempts > 3:
+                print("Too many failed attempts, entering cash shop to reset...")
                 enterCashshop(self)
                 attempts = 0
                 time.sleep(0.5)

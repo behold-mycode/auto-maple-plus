@@ -4,6 +4,7 @@ import cv2
 import src.common.config as config, src.common.utils as utils
 import src.gui.automation as automation
 from src.gui.automation.main import AutomationParams
+from src.common.arduino_input import press
 import pyotp
 import time
 import random
@@ -48,30 +49,36 @@ def autoLogin():
             pyautogui.click(x=int(passwordPos[0][0])+int(config.capture.window["left"]),y=int(passwordPos[0][1])+int(config.capture.window["top"]))
             pyautogui.write(password)
             time.sleep(0.5)
-            pyautogui.press("enter")
+            press("enter")
             time.sleep(0.5)
 
             #input OTP
             totp = pyotp.TOTP(secretKey)
             pyautogui.write(totp.now())
             time.sleep(0.5)
-            pyautogui.press("enter")
+            press("enter")
             time.sleep(2)
 
             #choose world
             numPress = w2press[world]
-            pyautogui.press("down",presses=numPress)
+            for _ in range(numPress):
+                press("down")
+                time.sleep(0.1)
             time.sleep(0.5)
-            pyautogui.press("enter")
+            press("enter")
             #choose channel
             desiredChannel = random.randint(1,30)
             downMoves = int(round(desiredChannel/5,0))
             rightMoves = int(desiredChannel%5)
-            pyautogui.press("down",presses=downMoves)
-            pyautogui.press("right",presses=rightMoves)
-            pyautogui.press("enter")
+            for _ in range(downMoves):
+                press("down")
+                time.sleep(0.1)
+            for _ in range(rightMoves):
+                press("right")
+                time.sleep(0.1)
+            press("enter")
             time.sleep(2)
-            pyautogui.press("enter")
+            press("enter")
     except Exception as e:
         print(e)
 
@@ -102,4 +109,4 @@ def auto2ndPW():
             charPos = utils.multi_match(frame,charofInterest, threshold=0.9)
             pyautogui.click(x=(charPos[0][0]+clickOffset+xoffset),y=(charPos[0][1]+clickOffset+yoffset))
 
-    pyautogui.press("enter")
+    press("enter")

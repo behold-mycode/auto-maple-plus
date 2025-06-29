@@ -7,13 +7,36 @@ import os
 import cv2
 import threading
 import numpy as np
-import keyboard as kb
+import platform
 from src.routine.components import Point
 from src.common import config
+import sys
+import os
+
+# Add the project root to Python path to find resources
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from resources import watcher_scan_table
+
 import mss
 from src.gui.automation.main import AutomationParams
 import src.modules.automation as automation
+
+# Cross-platform keyboard input handling
+if platform.system() == "Darwin":  # macOS
+    try:
+        import pynput
+        from pynput import keyboard as kb_listener
+        KEYBOARD_AVAILABLE = True
+    except ImportError:
+        print("[WARN] pynput not available on macOS. Install with: pip install pynput")
+        KEYBOARD_AVAILABLE = False
+else:
+    try:
+        import keyboard as kb
+        KEYBOARD_AVAILABLE = True
+    except ImportError:
+        print("[WARN] keyboard library not available")
+        KEYBOARD_AVAILABLE = False
 
 # A rune's symbol on the minimap
 RUNE_RANGES = (
@@ -222,8 +245,23 @@ class Watcher:
         self.mixer.load(get_alert_path(name))
         self.mixer.set_volume(volume)
         self.mixer.play(-1)
-        while not kb.is_pressed(config.listener.config['Start/stop']):
+        
+        # Cross-platform key detection
+        while True:
+            if platform.system() == "Darwin" and KEYBOARD_AVAILABLE:
+                # macOS: Use pynput key states
+                if config.listener.key_states.get(config.listener.config['Start/stop'], False):
+                    break
+            elif KEYBOARD_AVAILABLE:
+                # Windows/Linux: Use keyboard library
+                if kb.is_pressed(config.listener.config['Start/stop']):
+                    break
+            else:
+                # Fallback: wait for a fixed time
+                time.sleep(5)
+                break
             time.sleep(0.1)
+            
         self.mixer.stop()
         time.sleep(2)
         config.listener.enabled = True
