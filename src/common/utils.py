@@ -111,6 +111,78 @@ def multi_match(frame, template, threshold=0.95):
     return results
 
 
+def multi_scale_match(frame, template, threshold=0.8, scale_range=(0.5, 2.0), scale_steps=10):
+    """
+    Finds all matches in FRAME across multiple scales that are similar to TEMPLATE.
+    :param frame:       The image in which to search.
+    :param template:    The template to match with.
+    :param threshold:   The minimum percentage of TEMPLATE that each result must match.
+    :param scale_range: Tuple of (min_scale, max_scale) to try.
+    :param scale_steps: Number of scale steps to try.
+    :return:            An array of (x, y, scale, confidence) tuples for matches that exceed THRESHOLD.
+    """
+    if template is None or frame is None:
+        return []
+        
+    # Convert to grayscale for better matching
+    if len(frame.shape) > 2:
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray_frame = frame
+        
+    if len(template.shape) > 2:
+        gray_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+    else:
+        gray_template = template
+        
+    matches = []
+    scales = np.linspace(scale_range[0], scale_range[1], scale_steps)
+    
+    for scale in scales:
+        if scale == 1.0:
+            scaled_template = gray_template
+        else:
+            new_w = int(gray_template.shape[1] * scale)
+            new_h = int(gray_template.shape[0] * scale)
+            # Skip if template becomes too small
+            if new_w < 5 or new_h < 5:
+                continue
+            scaled_template = cv2.resize(gray_template, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+        
+        # Skip if template is larger than frame
+        if scaled_template.shape[0] > gray_frame.shape[0] or scaled_template.shape[1] > gray_frame.shape[1]:
+            continue
+            
+        result = cv2.matchTemplate(gray_frame, scaled_template, cv2.TM_CCOEFF_NORMED)
+        locations = np.where(result >= threshold)
+        
+        for pt in zip(*locations[::-1]):
+            x = int(round(pt[0] + scaled_template.shape[1] / 2))
+            y = int(round(pt[1] + scaled_template.shape[0] / 2))
+            confidence = result[pt[1], pt[0]]
+            matches.append((x, y, scale, confidence))
+    
+    # Sort by confidence
+    matches.sort(key=lambda x: x[3], reverse=True)
+    return matches
+
+
+def find_best_match(frame, template, threshold=0.8, scale_range=(0.5, 2.0), scale_steps=10):
+    """
+    Finds the best match in FRAME across multiple scales that is similar to TEMPLATE.
+    :param frame:       The image in which to search.
+    :param template:    The template to match with.
+    :param threshold:   The minimum percentage of TEMPLATE that each result must match.
+    :param scale_range: Tuple of (min_scale, max_scale) to try.
+    :param scale_steps: Number of scale steps to try.
+    :return:            The best match as (x, y, scale, confidence) or None if no match found.
+    """
+    matches = multi_scale_match(frame, template, threshold, scale_range, scale_steps)
+    if matches:
+        return matches[0]  # Return the match with highest confidence
+    return None
+
+
 def convert_to_relative(point, frame):
     """
     Converts POINT into relative coordinates in the range [0, 1] based on FRAME.

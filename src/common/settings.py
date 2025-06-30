@@ -88,16 +88,16 @@ def reset():
     buff_cooldown = 180
     
     # Arduino Configuration
-    arduino_port = "/dev/cu.usbmodemHIDPC1"  # Auto-detect if None
+    arduino_port = "/dev/cu.usbmodemHIDPC1"
     arduino_baud = 115200
     
     # Window Position Configuration
-    use_manual_window_position = False
+    use_manual_window_position = True
     use_hotkey_window_selection = True
-    maple_window_left = 0
-    maple_window_top = 0
-    maple_window_width = 1366
-    maple_window_height = 768
+    maple_window_left = 2945
+    maple_window_top = 58
+    maple_window_width = 2169
+    maple_window_height = 1207
 
 
 # The allowed error from the destination when moving towards a Point
@@ -121,16 +121,15 @@ arduino_baud = 115200
 
 # === Window Position Configuration ===
 # Set to True to use manual window position instead of auto-detection
-use_manual_window_position = False
+use_manual_window_position = True
 
 # Set to True to enable hotkey window selection (press F12 to select window)
 use_hotkey_window_selection = True
 
-# Manual window position (only used if use_manual_window_position = True)
 # These are the coordinates of your MapleStory window on screen
-maple_window_left = 0      # X coordinate of window's left edge
-maple_window_top = 0       # Y coordinate of window's top edge  
-maple_window_width = 1366  # Width of MapleStory window
-maple_window_height = 768  # Height of MapleStory window
+maple_window_left = 2945
+maple_window_top = 58
+maple_window_width = 2169
+maple_window_height = 1207
 
 reset()

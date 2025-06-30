@@ -38,19 +38,21 @@ else:
         print("[WARN] keyboard library not available")
         KEYBOARD_AVAILABLE = False
 
-# A rune's symbol on the minimap
-RUNE_RANGES = (
-    ((141, 148, 245), (146, 158, 255)),
-)
-rune_filtered = utils.filter_color(cv2.imread('assets/rune_template.png'), RUNE_RANGES)
-RUNE_TEMPLATE = cv2.cvtColor(rune_filtered, cv2.COLOR_BGR2GRAY)
+# Load template files with error handling
+def load_template_safe(path):
+    """Load a template file with error handling."""
+    if os.path.exists(path):
+        template = cv2.imread(path, 0)  # Load as grayscale
+        if template is not None:
+            return template
+    print(f"[WARN] Failed to load template: {path}")
+    return None
 
-# Other players' symbols on the minimap
-OTHER_RANGES = (
-    ((0, 245, 215), (10, 255, 255)),
-)
-other_filtered = utils.filter_color(cv2.imread('assets/other_template.png'), OTHER_RANGES)
-OTHER_TEMPLATE = cv2.cvtColor(other_filtered, cv2.COLOR_BGR2GRAY)
+# A rune's symbol on the minimap (direct template matching)
+RUNE_TEMPLATE = load_template_safe('assets/rune_template.png')
+
+# Other players' symbols on the minimap (direct template matching)
+OTHER_TEMPLATE = load_template_safe('assets/other_template.png')
 
 # The Elite Boss's warning sign
 ELITE_TEMPLATE = cv2.imread('assets/elite_template.jpg', 0)
@@ -96,9 +98,27 @@ class Watcher:
         charLocation_Last = None
 
         while True:
+            # Wait for capture to be ready
+            if not config.capture or not config.capture.ready:
+                time.sleep(0.1)
+                continue
+                
             frame = config.capture.frame #entire screen
+            if frame is None:
+                time.sleep(0.1)
+                continue
+                
             height, width, _ = frame.shape
+            
+            # Check if minimap is available
+            if not config.capture.minimap or 'minimap' not in config.capture.minimap:
+                time.sleep(0.1)
+                continue
+                
             minimap = config.capture.minimap['minimap'] #minimap only
+            if minimap is None or minimap.size == 0:
+                time.sleep(0.1)
+                continue
 
             #scans in this section only activate if bot is enabled
             if config.enabled:
@@ -113,17 +133,19 @@ class Watcher:
                 # Check for rune
                 now = time.time()
                 if not config.bot.rune_active:
-                    filtered = utils.filter_color(minimap, RUNE_RANGES)
-                    matches = utils.multi_match(filtered, RUNE_TEMPLATE, threshold=0.9)
-                    rune_start_time = now
-                    if matches and config.routine.sequence:
-                        abs_rune_pos = (matches[0][0], matches[0][1])
-                        config.bot.rune_pos = utils.convert_to_relative(abs_rune_pos, minimap)
-                        distances = list(map(distance_to_rune, config.routine.sequence))
-                        index = np.argmin(distances)
-                        config.bot.rune_closest_pos = config.routine[index].location
-                        if config.rune_cd == False:
-                            config.bot.rune_active = True
+                    if RUNE_TEMPLATE is not None:
+                        # Use direct template matching with multi-scale for better detection
+                        matches = utils.multi_scale_match(minimap, RUNE_TEMPLATE, threshold=0.7)
+                        rune_start_time = now
+                        if matches and config.routine.sequence:
+                            abs_rune_pos = (matches[0][0], matches[0][1])
+                            config.bot.rune_pos = utils.convert_to_relative(abs_rune_pos, minimap)
+                            distances = list(map(distance_to_rune, config.routine.sequence))
+                            index = np.argmin(distances)
+                            config.bot.rune_closest_pos = config.routine[index].location
+                            if config.rune_cd == False:
+                                config.bot.rune_active = True
+                                print(f"[INFO] Rune detected at {config.bot.rune_pos}")
                 elif now - rune_start_time > self.rune_alert_delay:     # Alert if rune hasn't been solved
                     config.bot.rune_active = False
 
@@ -134,13 +156,20 @@ class Watcher:
                     config.gui.view.monitoringconsole.set_runecdstat("Ready to Solve")
 
                 # Check for number of other players in map
-                filtered = utils.filter_color(minimap, OTHER_RANGES)
-                others = len(utils.multi_match(filtered, OTHER_TEMPLATE, threshold=0.5))
-                if others > 1:
-                    config.map_overcrowded = True
-                elif others <= 1:
+                if OTHER_TEMPLATE is not None:
+                    # Use direct template matching with multi-scale for better detection
+                    others_matches = utils.multi_scale_match(minimap, OTHER_TEMPLATE, threshold=0.7)
+                    others = len(others_matches)
+                    if others > 1:
+                        config.map_overcrowded = True
+                        print(f"[INFO] {others} other players detected in map")
+                    elif others <= 1:
+                        config.map_overcrowded = False
+                    config.gui.view.monitoringconsole.set_noOthers(str(others))
+                else:
+                    # Fallback if template is not available
                     config.map_overcrowded = False
-                config.gui.view.monitoringconsole.set_noOthers(str(others))
+                    config.gui.view.monitoringconsole.set_noOthers("0")
 
                 # Scan against dynamic scan table
                 for scanEntry in std:

@@ -1,6 +1,70 @@
+# Python
 __pycache__/
-assets/models/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+venv312/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs and editors
 .idea/
 .settings/
 *.iml
-venv312/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating System
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# User-specific configuration files
+window_config.json
+minimap_config.json
+
+# Machine Learning models (large files)
+assets/models/
+
+# Debug and temporary files
+debug_*.png
+debug_*.json
+test_*.py
+temp_*
+*.tmp
+*.log
+
+# Screenshots and captures
+screenshot_*.png
+capture_*.png
+minimap_*.png

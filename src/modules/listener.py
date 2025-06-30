@@ -58,29 +58,42 @@ class Listener(Configurable):
 
     def _on_press(self, key):
         """Handle key press events (macOS)."""
-        try:
-            key_char = key.char if hasattr(key, 'char') else str(key)
-            self.key_states[key_char] = True
-        except AttributeError:
-            # Special keys
-            key_name = str(key).replace('Key.', '')
+        # Normalize key object into comparable string (e.g. 'f4', 'space', 'a')
+        key_name = None
+        # Alphanumeric & symbol keys – have .char attribute
+        if hasattr(key, 'char') and key.char is not None:
+            key_name = key.char.lower()
+        else:
+            # Special keys – use .name if available, otherwise strip 'Key.'
+            try:
+                key_name = key.name.lower()
+            except AttributeError:
+                key_name = str(key).replace('Key.', '').lower()
+
+        # Store state
+        if key_name:
             self.key_states[key_name] = True
 
     def _on_release(self, key):
         """Handle key release events (macOS)."""
-        try:
-            key_char = key.char if hasattr(key, 'char') else str(key)
-            self.key_states[key_char] = False
-        except AttributeError:
-            # Special keys
-            key_name = str(key).replace('Key.', '')
+        # Same normalisation as _on_press
+        key_name = None
+        if hasattr(key, 'char') and key.char is not None:
+            key_name = key.char.lower()
+        else:
+            try:
+                key_name = key.name.lower()
+            except AttributeError:
+                key_name = str(key).replace('Key.', '').lower()
+
+        if key_name:
             self.key_states[key_name] = False
 
     def is_pressed(self, key):
         """Cross-platform key press detection."""
         if platform.system() == "Darwin" and KEYBOARD_AVAILABLE:
-            # macOS: Check key states
-            return self.key_states.get(key, False)
+            # macOS: Check key states with normalized lookup
+            return self.key_states.get(key.lower(), False)
         elif KEYBOARD_AVAILABLE:
             # Windows/Linux: Use keyboard library
             return kb.is_pressed(key)

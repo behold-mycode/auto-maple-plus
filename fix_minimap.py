@@ -11,235 +11,408 @@ import numpy as np
 import cv2
 import json
 import os
+import sys
+from PIL import Image, ImageTk
 
 class MinimapFixer:
+    """
+    A tool to manually select and configure the minimap region for Auto Maple Plus.
+    This tool is especially useful when automatic minimap detection fails.
+    """
+    
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("Minimap Fix Tool")
-        self.root.geometry("600x500")
-        self.root.configure(bg='white')
+        self.root.title("Auto Maple Plus - Minimap Fixer")
+        self.root.geometry("1000x700")
+        self.root.minsize(800, 600)
         
-        self.window_coords = None
-        self.minimap_coords = None
+        self.window_config = None
+        self.minimap_config = None
+        self.selection_active = False
+        self.selection_start = None
+        self.selection_current = None
+        self.screenshot = None
+        self.screenshot_tk = None
+        self.canvas = None
+        self.scale_factor = 1.0
+        
         self.load_configs()
-        
         self.setup_ui()
         
     def load_configs(self):
-        """Load existing configurations."""
-        # Load window config
-        if os.path.exists("window_config.json"):
-            with open("window_config.json", 'r') as f:
-                self.window_coords = json.load(f)
+        """Load existing window and minimap configurations."""
+        try:
+            # Load window config
+            if os.path.exists("window_config.json"):
+                with open("window_config.json", "r") as f:
+                    self.window_config = json.load(f)
+                    print(f"Loaded window config: {self.window_config}")
+            
+            # Load minimap config
+            if os.path.exists("minimap_config.json"):
+                with open("minimap_config.json", "r") as f:
+                    self.minimap_config = json.load(f)
+                    print(f"Loaded minimap config: {self.minimap_config}")
+        except Exception as e:
+            print(f"Error loading configurations: {e}")
         
-        # Load minimap config if it exists
-        if os.path.exists("minimap_config.json"):
-            with open("minimap_config.json", 'r') as f:
-                self.minimap_coords = json.load(f)
-    
     def setup_ui(self):
-        # Title
-        title = tk.Label(self.root, text="Minimap Fix Tool", font=("Arial", 18, "bold"), 
-                        bg='white', fg='black')
-        title.pack(pady=20)
+        """Set up the user interface."""
+        # Create main frame
+        main_frame = tk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Instructions
-        instructions = tk.Text(self.root, height=8, width=70, wrap=tk.WORD, font=("Arial", 12), 
-                             bg='lightblue', fg='black', relief=tk.SUNKEN, bd=2)
-        instructions.pack(pady=15, padx=20)
-        instructions.insert(tk.END, """INSTRUCTIONS:
-
-1. Make sure MapleStory is open and visible
-2. Click "Select Minimap Area" below
-3. Your MapleStory window will be captured
-4. Click on the TOP-LEFT corner of the minimap (green dot)
-5. Click on the BOTTOM-RIGHT corner of the minimap (red dot)
-6. The minimap coordinates will be saved automatically
-
-This will bypass the automatic template detection and use your manual selection instead.""")
-        instructions.config(state=tk.DISABLED)
+        # Create control panel
+        control_panel = tk.Frame(main_frame)
+        control_panel.pack(fill=tk.X, side=tk.TOP, pady=5)
         
         # Buttons
-        button_frame = tk.Frame(self.root, bg='white')
-        button_frame.pack(pady=20)
+        tk.Button(control_panel, text="Select Minimap", command=self.select_minimap).pack(side=tk.LEFT, padx=5)
+        tk.Button(control_panel, text="Save Configuration", command=self.save_config).pack(side=tk.LEFT, padx=5)
+        tk.Button(control_panel, text="Test Configuration", command=self.test_config).pack(side=tk.LEFT, padx=5)
         
-        select_btn = tk.Button(button_frame, text="Select Minimap Area", command=self.select_minimap, 
-                             bg="darkgreen", fg="white", font=("Arial", 14, "bold"), 
-                             width=18, height=2, relief=tk.RAISED, bd=3)
-        select_btn.pack(side=tk.LEFT, padx=10)
+        # Status label
+        self.status_var = tk.StringVar(value="Ready. Click 'Select Minimap' to begin.")
+        status_label = tk.Label(main_frame, textvariable=self.status_var, anchor=tk.W)
+        status_label.pack(fill=tk.X, side=tk.BOTTOM, pady=5)
         
-        test_btn = tk.Button(button_frame, text="Test Current Config", command=self.test_config,
-                           bg="darkblue", fg="white", font=("Arial", 14, "bold"), 
-                           width=18, height=2, relief=tk.RAISED, bd=3)
-        test_btn.pack(side=tk.LEFT, padx=10)
+        # Selection info
+        self.selection_info_var = tk.StringVar(value="No selection")
+        selection_info = tk.Label(main_frame, textvariable=self.selection_info_var, anchor=tk.W)
+        selection_info.pack(fill=tk.X, side=tk.BOTTOM, pady=5)
         
-        # Status
-        self.status_label = tk.Label(self.root, text="Ready to fix minimap", font=("Arial", 12, "bold"), 
-                                   bg='white', fg='darkblue')
-        self.status_label.pack(pady=15)
+        # Canvas for screenshot
+        canvas_frame = tk.Frame(main_frame)
+        canvas_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
-        # Current config display
-        if self.minimap_coords:
-            config_text = f"Current minimap: ({self.minimap_coords['mm_left']},{self.minimap_coords['mm_top']}) to ({self.minimap_coords['mm_right']},{self.minimap_coords['mm_bottom']})"
-            config_label = tk.Label(self.root, text=config_text, font=("Arial", 11), 
-                                  bg='white', fg='darkgreen')
-            config_label.pack(pady=5)
-    
+        self.canvas = tk.Canvas(canvas_frame, bg="black", highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Canvas scrollbars
+        h_scrollbar = tk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        h_scrollbar.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        v_scrollbar = tk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.canvas.yview)
+        v_scrollbar.pack(fill=tk.Y, side=tk.RIGHT)
+        
+        self.canvas.configure(xscrollcommand=h_scrollbar.set, yscrollcommand=v_scrollbar.set)
+        
+        # Canvas events
+        self.canvas.bind("<ButtonPress-1>", self.on_mouse_down)
+        self.canvas.bind("<B1-Motion>", self.on_mouse_move)
+        self.canvas.bind("<ButtonRelease-1>", self.on_mouse_up)
+        self.canvas.bind("<MouseWheel>", self.on_mouse_wheel)  # Windows
+        self.canvas.bind("<Button-4>", self.on_mouse_wheel)    # Linux scroll up
+        self.canvas.bind("<Button-5>", self.on_mouse_wheel)    # Linux scroll down
+        
     def select_minimap(self):
-        """Select the minimap area manually."""
-        if not self.window_coords:
-            messagebox.showerror("Error", "No window configuration found. Run the window selector first.")
-            return
-        
-        self.status_label.config(text="Capturing MapleStory window...")
-        self.root.update()
-        
-        try:
-            with mss.mss() as sct:
-                # Get all monitors
-                monitors = sct.monitors
-                print(f"Available monitors: {monitors}")
-                
-                # For ultrawide monitors, we need to capture the entire screen
-                # and then crop to our window area
-                print(f"Window coordinates: {self.window_coords}")
-                
-                # Capture the entire screen (monitor 0 is all monitors combined)
-                screenshot = sct.grab(monitors[0])
-                frame = np.array(screenshot)
-                
-                # Convert from BGRA to BGR if needed
-                if frame.shape[2] == 4:
-                    frame = frame[:, :, :3]
-                
-                print(f"Full screen capture shape: {frame.shape}")
-                
-                # Crop to just the MapleStory window using absolute coordinates
-                window_frame = frame[self.window_coords['top']:self.window_coords['top'] + self.window_coords['height'], 
-                                   self.window_coords['left']:self.window_coords['left'] + self.window_coords['width']]
-                
-                print(f"Window frame shape: {window_frame.shape}")
-                
-                # Create window for selection
-                cv2.namedWindow("Select Minimap Area", cv2.WINDOW_NORMAL)
-                cv2.setWindowProperty("Select Minimap Area", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-                
-                coordinates = []
-                display_img = window_frame.copy()
-                
-                def mouse_callback(event, x, y, flags, param):
-                    nonlocal display_img
-                    if event == cv2.EVENT_LBUTTONDOWN:
-                        coordinates.append((x, y))
-                        print(f"Clicked at: ({x}, {y})")
-                        
-                        if len(coordinates) == 1:
-                            # Draw green circle for first click
-                            cv2.circle(display_img, (x, y), 8, (0, 255, 0), -1)
-                            cv2.putText(display_img, "MINIMAP TOP-LEFT", (x+15, y-15), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
-                            cv2.imshow("Select Minimap Area", display_img)
-                            
-                        elif len(coordinates) == 2:
-                            # Draw red circle for second click
-                            cv2.circle(display_img, (x, y), 8, (0, 0, 255), -1)
-                            cv2.putText(display_img, "MINIMAP BOTTOM-RIGHT", (x+15, y-15), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
-                            cv2.imshow("Select Minimap Area", display_img)
-                            
-                            # Calculate minimap area
-                            x1, y1 = coordinates[0]
-                            x2, y2 = coordinates[1]
-                            
-                            mm_left = min(x1, x2)
-                            mm_top = min(y1, y2)
-                            mm_right = max(x1, x2)
-                            mm_bottom = max(y1, y2)
-                            
-                            # Show the cropped minimap
-                            minimap = window_frame[mm_top:mm_bottom, mm_left:mm_right]
-                            cv2.imshow("Selected Minimap", minimap)
-                            
-                            # Save the coordinates
-                            minimap_config = {
-                                'mm_left': mm_left,
-                                'mm_top': mm_top,
-                                'mm_right': mm_right,
-                                'mm_bottom': mm_bottom
-                            }
-                            
-                            with open("minimap_config.json", 'w') as f:
-                                json.dump(minimap_config, f)
-                            
-                            self.minimap_coords = minimap_config
-                            print(f"Minimap config saved: {minimap_config}")
-                            
-                            # Show success message
-                            cv2.putText(display_img, "MINIMAP SAVED!", (display_img.shape[1]//2-200, display_img.shape[0]//2), 
-                                      cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 0), 4)
-                            cv2.imshow("Select Minimap Area", display_img)
-                            cv2.waitKey(2000)  # Show for 2 seconds
-                            cv2.destroyAllWindows()
-                            
-                            # Update status
-                            self.status_label.config(text=f"Minimap saved: {mm_left},{mm_top} to {mm_right},{mm_bottom}")
-                            
-                            # Show success message
-                            messagebox.showinfo("Success", f"Minimap area saved!\nTop-left: ({mm_left}, {mm_top})\nBottom-right: ({mm_right}, {mm_bottom})")
-                
-                cv2.setMouseCallback("Select Minimap Area", mouse_callback)
-                
-                # Add instructions on the image
-                cv2.putText(display_img, "Click TOP-LEFT corner of minimap", (50, 50), 
-                          cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 3)
-                cv2.putText(display_img, "Click BOTTOM-RIGHT corner of minimap", (50, display_img.shape[0]-50), 
-                          cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 3)
-                cv2.imshow("Select Minimap Area", display_img)
-                cv2.waitKey(0)
-                cv2.destroyAllWindows()
-                
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to select minimap: {e}")
-            self.status_label.config(text="Selection failed")
-    
-    def test_config(self):
-        """Test the current minimap configuration."""
-        if not self.minimap_coords:
-            messagebox.showinfo("No Config", "No minimap configuration found. Please select the minimap area first.")
+        """Take a screenshot and allow the user to select the minimap region."""
+        if not self.window_config:
+            messagebox.showwarning("Warning", "No window configuration found. Please run window_selector.py first.")
             return
         
         try:
             with mss.mss() as sct:
-                # Capture the MapleStory window
-                window = {
-                    'left': self.window_coords['left'],
-                    'top': self.window_coords['top'],
-                    'width': self.window_coords['width'],
-                    'height': self.window_coords['height']
+                # Create a region dict for mss
+                region = {
+                    'left': self.window_config['left'],
+                    'top': self.window_config['top'],
+                    'width': self.window_config['width'],
+                    'height': self.window_config['height']
                 }
                 
-                screenshot = sct.grab(window)
-                frame = np.array(screenshot)
+                # Take screenshot of the MapleStory window
+                sct_img = sct.grab(region)
+                img = np.array(sct_img)
                 
-                # Convert from BGRA to BGR if needed
-                if frame.shape[2] == 4:
-                    frame = frame[:, :, :3]
+                # Convert BGRA to RGB for display
+                if img.shape[2] == 4:
+                    img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+                else:
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 
-                # Crop the minimap
-                minimap = frame[self.minimap_coords['mm_top']:self.minimap_coords['mm_bottom'], 
-                              self.minimap_coords['mm_left']:self.minimap_coords['mm_right']]
+                self.screenshot = img
+                self.display_screenshot()
                 
-                # Show the minimap
-                cv2.imshow("Test Minimap", minimap)
-                cv2.waitKey(3000)  # Show for 3 seconds
-                cv2.destroyAllWindows()
-                
-                messagebox.showinfo("Test Complete", "Minimap test completed. Check the displayed image to verify it's correct.")
+                self.status_var.set("Screenshot taken. Draw a rectangle around the minimap.")
+                self.selection_active = False
+                self.selection_start = None
+                self.selection_current = None
+                self.update_selection_display()
                 
         except Exception as e:
-            messagebox.showerror("Error", f"Test failed: {e}")
-    
+            messagebox.showerror("Error", f"Failed to take screenshot: {str(e)}")
+            
+    def display_screenshot(self):
+        """Display the screenshot on the canvas."""
+        if self.screenshot is None:
+            return
+            
+        # Calculate scale factor for large screens
+        h, w = self.screenshot.shape[:2]
+        canvas_w = self.canvas.winfo_width()
+        canvas_h = self.canvas.winfo_height()
+        
+        if canvas_w <= 1 or canvas_h <= 1:  # Canvas not yet realized
+            canvas_w = 800
+            canvas_h = 600
+            
+        scale_w = canvas_w / w
+        scale_h = canvas_h / h
+        self.scale_factor = min(1.0, min(scale_w, scale_h))
+        
+        # Scale the image if needed
+        if self.scale_factor < 1.0:
+            display_w = int(w * self.scale_factor)
+            display_h = int(h * self.scale_factor)
+            display_img = cv2.resize(self.screenshot, (display_w, display_h), interpolation=cv2.INTER_AREA)
+        else:
+            self.scale_factor = 1.0
+            display_img = self.screenshot
+            
+        # Convert to PhotoImage
+        pil_img = Image.fromarray(display_img)
+        self.screenshot_tk = ImageTk.PhotoImage(image=pil_img)
+        
+        # Update canvas
+        self.canvas.delete("all")
+        self.canvas.create_image(0, 0, image=self.screenshot_tk, anchor=tk.NW)
+        self.canvas.config(scrollregion=(0, 0, display_img.shape[1], display_img.shape[0]))
+        
+        # If we have existing minimap config, draw it
+        if self.minimap_config:
+            self.draw_existing_minimap()
+            
+    def draw_existing_minimap(self):
+        """Draw the existing minimap configuration on the canvas."""
+        if not self.minimap_config:
+            return
+            
+        # Calculate relative coordinates within the window
+        left = self.minimap_config['mm_left'] - self.window_config['left']
+        top = self.minimap_config['mm_top'] - self.window_config['top']
+        right = self.minimap_config['mm_right'] - self.window_config['left']
+        bottom = self.minimap_config['mm_bottom'] - self.window_config['top']
+        
+        # Scale coordinates
+        scaled_left = left * self.scale_factor
+        scaled_top = top * self.scale_factor
+        scaled_right = right * self.scale_factor
+        scaled_bottom = bottom * self.scale_factor
+        
+        # Draw rectangle
+        self.canvas.create_rectangle(
+            scaled_left, scaled_top, scaled_right, scaled_bottom,
+            outline="yellow", width=2, tags="existing_minimap"
+        )
+        
+    def on_mouse_down(self, event):
+        """Handle mouse button press."""
+        if self.screenshot is None:
+            return
+            
+        # Get canvas coordinates
+        canvas_x = self.canvas.canvasx(event.x)
+        canvas_y = self.canvas.canvasy(event.y)
+        
+        # Convert to original image coordinates
+        x = int(canvas_x / self.scale_factor)
+        y = int(canvas_y / self.scale_factor)
+        
+        self.selection_active = True
+        self.selection_start = (x, y)
+        self.selection_current = (x, y)
+        self.update_selection_display()
+        
+    def on_mouse_move(self, event):
+        """Handle mouse movement."""
+        if not self.selection_active or self.screenshot is None:
+            return
+            
+        # Get canvas coordinates
+        canvas_x = self.canvas.canvasx(event.x)
+        canvas_y = self.canvas.canvasy(event.y)
+        
+        # Convert to original image coordinates
+        x = int(canvas_x / self.scale_factor)
+        y = int(canvas_y / self.scale_factor)
+        
+        self.selection_current = (x, y)
+        self.update_selection_display()
+        
+    def on_mouse_up(self, event):
+        """Handle mouse button release."""
+        if not self.selection_active or self.screenshot is None:
+            return
+            
+        # Get canvas coordinates
+        canvas_x = self.canvas.canvasx(event.x)
+        canvas_y = self.canvas.canvasy(event.y)
+        
+        # Convert to original image coordinates
+        x = int(canvas_x / self.scale_factor)
+        y = int(canvas_y / self.scale_factor)
+        
+        self.selection_current = (x, y)
+        self.update_selection_display()
+        self.selection_active = False
+        
+    def on_mouse_wheel(self, event):
+        """Handle mouse wheel for zooming."""
+        if self.screenshot is None:
+            return
+            
+        # Determine zoom direction
+        if event.num == 4 or event.delta > 0:  # Scroll up
+            zoom_factor = 1.1
+        elif event.num == 5 or event.delta < 0:  # Scroll down
+            zoom_factor = 0.9
+        else:
+            return
+            
+        # Zoom
+        self.scale_factor *= zoom_factor
+        self.scale_factor = max(0.1, min(3.0, self.scale_factor))  # Limit zoom range
+        
+        # Redisplay with new scale
+        self.display_screenshot()
+        self.update_selection_display()
+        
+    def update_selection_display(self):
+        """Update the selection rectangle on the canvas."""
+        self.canvas.delete("selection")
+        
+        if self.selection_start is None or self.selection_current is None:
+            self.selection_info_var.set("No selection")
+            return
+            
+        # Get coordinates
+        x1, y1 = self.selection_start
+        x2, y2 = self.selection_current
+        
+        # Ensure x1,y1 is top-left and x2,y2 is bottom-right
+        left = min(x1, x2)
+        top = min(y1, y2)
+        right = max(x1, x2)
+        bottom = max(y1, y2)
+        
+        # Draw scaled rectangle
+        scaled_left = left * self.scale_factor
+        scaled_top = top * self.scale_factor
+        scaled_right = right * self.scale_factor
+        scaled_bottom = bottom * self.scale_factor
+        
+        self.canvas.create_rectangle(
+            scaled_left, scaled_top, scaled_right, scaled_bottom,
+            outline="red", width=2, tags="selection"
+        )
+        
+        # Update info text
+        width = right - left
+        height = bottom - top
+        ratio = width / height if height > 0 else 0
+        
+        # Calculate absolute coordinates
+        abs_left = left + self.window_config['left']
+        abs_top = top + self.window_config['top']
+        abs_right = right + self.window_config['left']
+        abs_bottom = bottom + self.window_config['top']
+        
+        self.selection_info_var.set(
+            f"Minimap: ({abs_left}, {abs_top}) to ({abs_right}, {abs_bottom}), "
+            f"Size: {width}x{height}, Ratio: {ratio:.2f}"
+        )
+        
+    def get_selection_coords(self):
+        """Get the selection coordinates adjusted for window position."""
+        if self.selection_start is None or self.selection_current is None:
+            return None
+            
+        # Get coordinates
+        x1, y1 = self.selection_start
+        x2, y2 = self.selection_current
+        
+        # Ensure x1,y1 is top-left and x2,y2 is bottom-right
+        left = min(x1, x2)
+        top = min(y1, y2)
+        right = max(x1, x2)
+        bottom = max(y1, y2)
+        
+        # Calculate absolute coordinates
+        abs_left = left + self.window_config['left']
+        abs_top = top + self.window_config['top']
+        abs_right = right + self.window_config['left']
+        abs_bottom = bottom + self.window_config['top']
+        
+        return {
+            'mm_left': abs_left,
+            'mm_top': abs_top,
+            'mm_right': abs_right,
+            'mm_bottom': abs_bottom
+        }
+        
+    def save_config(self):
+        """Save the current selection to a configuration file."""
+        coords = self.get_selection_coords()
+        if not coords:
+            messagebox.showerror("Error", "No selection made. Please select the minimap first.")
+            return
+            
+        try:
+            # Save minimap config
+            with open("minimap_config.json", "w") as f:
+                json.dump(coords, f, indent=2)
+                
+            self.minimap_config = coords
+            messagebox.showinfo("Success", "Minimap configuration saved successfully!")
+            self.status_var.set("Configuration saved. You can now test it or close this tool.")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save configuration: {str(e)}")
+            
+    def test_config(self):
+        """Test the current minimap configuration."""
+        if not self.minimap_config:
+            messagebox.showerror("Error", "No minimap configuration available. Please select and save first.")
+            return
+            
+        try:
+            with mss.mss() as sct:
+                # Create a region dict for mss
+                region = {
+                    'left': self.minimap_config['mm_left'],
+                    'top': self.minimap_config['mm_top'],
+                    'width': self.minimap_config['mm_right'] - self.minimap_config['mm_left'],
+                    'height': self.minimap_config['mm_bottom'] - self.minimap_config['mm_top']
+                }
+                
+                # Take screenshot of the minimap region
+                sct_img = sct.grab(region)
+                img = np.array(sct_img)
+                
+                # Convert BGRA to RGB
+                if img.shape[2] == 4:
+                    img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+                else:
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                
+                # Create a new window to display the minimap
+                cv2.namedWindow("Minimap Region", cv2.WINDOW_NORMAL)
+                cv2.imshow("Minimap Region", img)
+                cv2.waitKey(1)
+                
+                self.status_var.set("Testing minimap configuration. Close the 'Minimap Region' window when done.")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to test configuration: {str(e)}")
+            
     def run(self):
+        """Run the minimap fixer application."""
         self.root.mainloop()
+        # Clean up any OpenCV windows
+        cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
-    app = MinimapFixer()
-    app.run() 
+    fixer = MinimapFixer()
+    fixer.run() 
