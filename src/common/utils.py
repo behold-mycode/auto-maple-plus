@@ -1,18 +1,38 @@
+import cv2
+import numpy as np
+from src.common import config
+
+
 def single_match(frame, template, threshold=0.8):
     """
-    Finds the best match of TEMPLATE in FRAME using template matching.
+    Finds the first match of TEMPLATE in FRAME above the given threshold.
     :param frame:      The image to search in.
     :param template:   The template to search for.
     :param threshold:  The minimum similarity score to consider a match.
-    :return:          The best match coordinates (x, y) or None if no match found.
+    :return:          The first match coordinates (x, y) or None if no match found.
     """
     
-    result = cv2.matchTemplate(frame, template, cv2.TM_CCOEFF)
-    _, max_val, _, max_loc = cv2.minMaxLoc(result)
-    
-    if max_val >= threshold:
-        return max_loc
-    return None
+    try:
+        # Ensure both frame and template are grayscale uint8
+        if len(frame.shape) == 3:
+            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        else:
+            frame_gray = frame.astype(np.uint8)
+            
+        if len(template.shape) == 3:
+            template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        else:
+            template_gray = template.astype(np.uint8)
+        
+        result = cv2.matchTemplate(frame_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        
+        if max_val >= threshold:
+            return max_loc
+        return None
+    except Exception as e:
+        print(f"[WARN] Single match failed: {e}")
+        return None
 
 
 def multi_match(frame, template, threshold=0.8):
@@ -24,51 +44,110 @@ def multi_match(frame, template, threshold=0.8):
     :return:          List of match coordinates [(x, y), ...].
     """
     
-    result = cv2.matchTemplate(frame, template, cv2.TM_CCOEFF_NORMED)
-    locations = np.where(result >= threshold)
-    matches = list(zip(*locations[::-1]))  # Convert to (x, y) format
-    
-    return matches
+    try:
+        # Ensure both frame and template are grayscale uint8
+        if len(frame.shape) == 3:
+            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        else:
+            frame_gray = frame.astype(np.uint8)
+            
+        if len(template.shape) == 3:
+            template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        else:
+            template_gray = template.astype(np.uint8)
+        
+        result = cv2.matchTemplate(frame_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+        locations = np.where(result >= threshold)
+        matches = list(zip(*locations[::-1]))  # Convert to (x, y) format
+        return matches
+    except Exception as e:
+        print(f"[WARN] Multi match failed: {e}")
+        return []
 
 
-def convert_to_relative(point, frame):
+def multi_scale_match(frame, template, threshold=0.8, scale_range=(0.8, 1.2), scale_steps=5):
     """
-    Converts POINT into relative coordinates (0-1) based on FRAME.
-    :param point:   The point in absolute coordinates.
-    :param frame:   The image to use as a reference.
-    :return:        The given point in relative coordinates.
-    """
-    
-    x = point[0] / frame.shape[1]
-    y = point[1] / frame.shape[0]
-    return x, y
-
-
-def convert_to_absolute(point, frame):
-    """
-    Converts POINT into absolute coordinates (in pixels) based on FRAME.
-    Normalizes the units of the vertical axis to equal those of the horizontal
-    axis by using config.mm_ratio.
-    :param point:   The point in relative coordinates.
-    :param frame:   The image to use as a reference.
-    :return:        The given point in absolute coordinates.
-    """
-    
-    x = int(round(point[0] * frame.shape[1]))
-    y = int(round(point[1] * config.capture.minimap_ratio * frame.shape[0]))
-    return x, y
-
-
-def draw_location(frame, point, color):
-    """
-    Draws a circle at POINT on FRAME in the given COLOR.
-    :param frame:   The image to draw on.
-    :param point:   The point to draw at (in relative coordinates).
-    :param color:   The color to draw in (B, G, R).
+    Finds matches of TEMPLATE in FRAME at multiple scales.
+    :param frame:       The image to search in.
+    :param template:    The template to search for.
+    :param threshold:   The minimum similarity score to consider a match.
+    :param scale_range: Tuple of (min_scale, max_scale).
+    :param scale_steps: Number of scale steps to try.
+    :return:           List of matches [(x, y, scale, confidence), ...].
     """
     
-    x, y = convert_to_absolute(point, frame)
-    cv2.circle(frame, (x, y), 3, color, -1)
+    try:
+        # Ensure both frame and template are grayscale uint8
+        if len(frame.shape) == 3:
+            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        else:
+            frame_gray = frame.astype(np.uint8)
+            
+        if len(template.shape) == 3:
+            template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        else:
+            template_gray = template.astype(np.uint8)
+        
+        matches = []
+        scales = np.linspace(scale_range[0], scale_range[1], scale_steps)
+        
+        for scale in scales:
+            # Resize template
+            width = int(template_gray.shape[1] * scale)
+            height = int(template_gray.shape[0] * scale)
+            if width > 0 and height > 0:
+                resized_template = cv2.resize(template_gray, (width, height))
+                
+                # Match template
+                result = cv2.matchTemplate(frame_gray, resized_template, cv2.TM_CCOEFF_NORMED)
+                locations = np.where(result >= threshold)
+                
+                for pt in zip(*locations[::-1]):
+                    confidence = result[pt[1], pt[0]]
+                    matches.append((pt[0], pt[1], scale, confidence))
+        
+        # Sort by confidence (highest first)
+        matches.sort(key=lambda x: x[3], reverse=True)
+        return matches
+    except Exception as e:
+        print(f"[WARN] Multi-scale match failed: {e}")
+        return []
+
+
+def convert_to_relative(point, img):
+    """
+    Converts absolute coordinates to relative coordinates (0-1 range).
+    :param point: The absolute coordinates (x, y).
+    :param img:   The image to get dimensions from.
+    :return:      Relative coordinates (x, y) in 0-1 range.
+    """
+    height, width = img.shape[:2]
+    return (point[0] / width, point[1] / height)
+
+
+def convert_to_absolute(point, img):
+    """
+    Converts relative coordinates to absolute coordinates.
+    :param point: The relative coordinates (x, y) in 0-1 range.
+    :param img:   The image to get dimensions from.
+    :return:      Absolute coordinates (x, y).
+    """
+    height, width = img.shape[:2]
+    return (int(point[0] * width), int(point[1] * height))
+
+
+def draw_location(img, location, color):
+    """
+    Draws a circle at the given location on the image.
+    :param img:      The image to draw on.
+    :param location: The location to draw at (relative coordinates).
+    :param color:    The color to draw in BGR format.
+    """
+    try:
+        point = convert_to_absolute(location, img)
+        cv2.circle(img, point, 3, color, -1)
+    except Exception as e:
+        print(f"[WARN] Failed to draw location: {e}")
 
 import math
 import queue

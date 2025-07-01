@@ -45,12 +45,12 @@ class Minimap(LabelFrame):
                 img = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
 
             # Mark the position of the active rune
-            if rune_active:
-                cv2.circle(img,
-                           utils.convert_to_absolute(rune_pos, img),
-                           3,
-                           (128, 0, 128),
-                           -1)
+            if rune_active and rune_pos:
+                rune_abs = utils.convert_to_absolute(rune_pos, img)
+                cv2.circle(img, rune_abs, 6, (128, 0, 128), -1)  # Purple circle
+                cv2.circle(img, rune_abs, 8, (255, 255, 255), 2)  # White outline
+                cv2.putText(img, "RUNE", (rune_abs[0] + 10, rune_abs[1]), 
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.4, (128, 0, 128), 1)
 
             # Draw the current path that the program is taking
             if config.enabled and len(path) > 1:
@@ -70,12 +70,35 @@ class Minimap(LabelFrame):
             if config.layout:
                 config.layout.draw(img)
 
+            # Draw other players (blue circles)
+            others_pos = minimap.get('others_pos', [])
+            for other_pos in others_pos:
+                other_abs = utils.convert_to_absolute(other_pos, img)
+                cv2.circle(img, other_abs, 4, (255, 0, 0), -1)  # Blue circle
+                cv2.circle(img, other_abs, 6, (255, 255, 255), 1)  # White outline
+                cv2.putText(img, "OTHER", (other_abs[0] + 8, other_abs[1]), 
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 0, 0), 1)
+
             # Draw the player's position on top of everything
-            cv2.circle(img,
-                       utils.convert_to_absolute(player_pos, img),
-                       3,
-                       (0, 0, 255),
-                       -1)
+            player_abs = utils.convert_to_absolute(player_pos, img)
+            cv2.circle(img, player_abs, 5, (0, 0, 255), -1)  # Larger red circle
+            cv2.circle(img, player_abs, 7, (255, 255, 255), 2)  # White outline
+            cv2.putText(img, "PLAYER", (player_abs[0] + 10, player_abs[1]), 
+                      cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
+            
+            # Add detection status overlay
+            status_text = f"Tracking: {'ACTIVE' if config.capture.ready else 'INACTIVE'}"
+            cv2.putText(img, status_text, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 
+                      (0, 255, 0) if config.capture.ready else (0, 0, 255), 2)
+            
+            # Add player count
+            player_count = len(others_pos) + 1
+            cv2.putText(img, f"Players: {player_count}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+            
+            # Add rune status
+            rune_status = "RUNE: ACTIVE" if rune_active else "RUNE: NONE"
+            rune_color = (128, 0, 128) if rune_active else (128, 128, 128)
+            cv2.putText(img, rune_status, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.4, rune_color, 1)
 
             # Display the minimap in the Canvas
             img = ImageTk.PhotoImage(Image.fromarray(img))

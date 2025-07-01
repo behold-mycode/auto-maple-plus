@@ -13,6 +13,9 @@ RESOURCES_DIR = 'resources'
 # The player's position relative to the minimap
 player_pos = (0, 0)
 
+# Other players' positions relative to the minimap
+others_pos = []
+
 # Describes whether the main bot loop is currently running or not
 enabled = False
 

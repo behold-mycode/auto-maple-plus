@@ -4,6 +4,8 @@
 
 Auto Maple Plus is an intelligent Python bot that plays MapleStory, a 2D side-scrolling MMORPG, using simulated key presses, TensorFlow machine learning, OpenCV template matching, and other computer vision techniques.
 
+**Recent Updates**: Enhanced detection system with improved template matching, Non-Maximum Suppression (NMS) for better accuracy, and robust error handling. See [DETECTION_IMPROVEMENTS_SUMMARY.md](DETECTION_IMPROVEMENTS_SUMMARY.md) for details.
+
 **This fork adds cross-platform support** by replacing Windows-only interception libraries with an **Arduino Leonardo-based USB HID keyboard system**, enabling the bot to work on **Windows, macOS, and Linux** with genuine hardware-level keystrokes that are completely undetectable.
 
 Community-created resources, such as **command books** for each class and **routines** for each map, can be found in the **[resources repository](https://github.com/tanjeffreyz/auto-maple-resources)**.
