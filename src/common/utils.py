@@ -1,4 +1,74 @@
-"""A collection of functions and classes used across multiple modules."""
+def single_match(frame, template, threshold=0.8):
+    """
+    Finds the best match of TEMPLATE in FRAME using template matching.
+    :param frame:      The image to search in.
+    :param template:   The template to search for.
+    :param threshold:  The minimum similarity score to consider a match.
+    :return:          The best match coordinates (x, y) or None if no match found.
+    """
+    
+    result = cv2.matchTemplate(frame, template, cv2.TM_CCOEFF)
+    _, max_val, _, max_loc = cv2.minMaxLoc(result)
+    
+    if max_val >= threshold:
+        return max_loc
+    return None
+
+
+def multi_match(frame, template, threshold=0.8):
+    """
+    Finds all matches of TEMPLATE in FRAME above the given threshold.
+    :param frame:      The image to search in.
+    :param template:   The template to search for.
+    :param threshold:  The minimum similarity score to consider a match.
+    :return:          List of match coordinates [(x, y), ...].
+    """
+    
+    result = cv2.matchTemplate(frame, template, cv2.TM_CCOEFF_NORMED)
+    locations = np.where(result >= threshold)
+    matches = list(zip(*locations[::-1]))  # Convert to (x, y) format
+    
+    return matches
+
+
+def convert_to_relative(point, frame):
+    """
+    Converts POINT into relative coordinates (0-1) based on FRAME.
+    :param point:   The point in absolute coordinates.
+    :param frame:   The image to use as a reference.
+    :return:        The given point in relative coordinates.
+    """
+    
+    x = point[0] / frame.shape[1]
+    y = point[1] / frame.shape[0]
+    return x, y
+
+
+def convert_to_absolute(point, frame):
+    """
+    Converts POINT into absolute coordinates (in pixels) based on FRAME.
+    Normalizes the units of the vertical axis to equal those of the horizontal
+    axis by using config.mm_ratio.
+    :param point:   The point in relative coordinates.
+    :param frame:   The image to use as a reference.
+    :return:        The given point in absolute coordinates.
+    """
+    
+    x = int(round(point[0] * frame.shape[1]))
+    y = int(round(point[1] * config.capture.minimap_ratio * frame.shape[0]))
+    return x, y
+
+
+def draw_location(frame, point, color):
+    """
+    Draws a circle at POINT on FRAME in the given COLOR.
+    :param frame:   The image to draw on.
+    :param point:   The point to draw at (in relative coordinates).
+    :param color:   The color to draw in (B, G, R).
+    """
+    
+    x, y = convert_to_absolute(point, frame)
+    cv2.circle(frame, (x, y), 3, color, -1)
 
 import math
 import queue
@@ -72,147 +142,6 @@ def separate_args(arguments):
     return args, kwargs
 
 
-def single_match(frame, template):
-    """
-    Finds the best match within FRAME.
-    :param frame:       The image in which to search for TEMPLATE.
-    :param template:    The template to match with.
-    :return:            The top-left and bottom-right positions of the best match.
-    """
-
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    result = cv2.matchTemplate(gray, template, cv2.TM_CCOEFF)
-    _, _, _, top_left = cv2.minMaxLoc(result)
-    w, h = template.shape[::-1]
-    bottom_right = (top_left[0] + w, top_left[1] + h)
-    return top_left, bottom_right
-
-
-def multi_match(frame, template, threshold=0.95):
-    """
-    Finds all matches in FRAME that are similar to TEMPLATE by at least THRESHOLD.
-    :param frame:       The image in which to search.
-    :param template:    The template to match with.
-    :param threshold:   The minimum percentage of TEMPLATE that each result must match.
-    :return:            An array of matches that exceed THRESHOLD.
-    """
-
-    if template.shape[0] > frame.shape[0] or template.shape[1] > frame.shape[1]:
-        return []
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    result = cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED)
-    locations = np.where(result >= threshold)
-    locations = list(zip(*locations[::-1]))
-    results = []
-    for p in locations:
-        x = int(round(p[0] + template.shape[1] / 2))
-        y = int(round(p[1] + template.shape[0] / 2))
-        results.append((x, y))
-    return results
-
-
-def multi_scale_match(frame, template, threshold=0.8, scale_range=(0.5, 2.0), scale_steps=10):
-    """
-    Finds all matches in FRAME across multiple scales that are similar to TEMPLATE.
-    :param frame:       The image in which to search.
-    :param template:    The template to match with.
-    :param threshold:   The minimum percentage of TEMPLATE that each result must match.
-    :param scale_range: Tuple of (min_scale, max_scale) to try.
-    :param scale_steps: Number of scale steps to try.
-    :return:            An array of (x, y, scale, confidence) tuples for matches that exceed THRESHOLD.
-    """
-    if template is None or frame is None:
-        return []
-        
-    # Convert to grayscale for better matching
-    if len(frame.shape) > 2:
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    else:
-        gray_frame = frame
-        
-    if len(template.shape) > 2:
-        gray_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-    else:
-        gray_template = template
-        
-    matches = []
-    scales = np.linspace(scale_range[0], scale_range[1], scale_steps)
-    
-    for scale in scales:
-        if scale == 1.0:
-            scaled_template = gray_template
-        else:
-            new_w = int(gray_template.shape[1] * scale)
-            new_h = int(gray_template.shape[0] * scale)
-            # Skip if template becomes too small
-            if new_w < 5 or new_h < 5:
-                continue
-            scaled_template = cv2.resize(gray_template, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
-        
-        # Skip if template is larger than frame
-        if scaled_template.shape[0] > gray_frame.shape[0] or scaled_template.shape[1] > gray_frame.shape[1]:
-            continue
-            
-        result = cv2.matchTemplate(gray_frame, scaled_template, cv2.TM_CCOEFF_NORMED)
-        locations = np.where(result >= threshold)
-        
-        for pt in zip(*locations[::-1]):
-            x = int(round(pt[0] + scaled_template.shape[1] / 2))
-            y = int(round(pt[1] + scaled_template.shape[0] / 2))
-            confidence = result[pt[1], pt[0]]
-            matches.append((x, y, scale, confidence))
-    
-    # Sort by confidence
-    matches.sort(key=lambda x: x[3], reverse=True)
-    return matches
-
-
-def find_best_match(frame, template, threshold=0.8, scale_range=(0.5, 2.0), scale_steps=10):
-    """
-    Finds the best match in FRAME across multiple scales that is similar to TEMPLATE.
-    :param frame:       The image in which to search.
-    :param template:    The template to match with.
-    :param threshold:   The minimum percentage of TEMPLATE that each result must match.
-    :param scale_range: Tuple of (min_scale, max_scale) to try.
-    :param scale_steps: Number of scale steps to try.
-    :return:            The best match as (x, y, scale, confidence) or None if no match found.
-    """
-    matches = multi_scale_match(frame, template, threshold, scale_range, scale_steps)
-    if matches:
-        return matches[0]  # Return the match with highest confidence
-    return None
-
-
-def convert_to_relative(point, frame):
-    """
-    Converts POINT into relative coordinates in the range [0, 1] based on FRAME.
-    Normalizes the units of the vertical axis to equal those of the horizontal
-    axis by using config.mm_ratio.
-    :param point:   The point in absolute coordinates.
-    :param frame:   The image to use as a reference.
-    :return:        The given point in relative coordinates.
-    """
-
-    x = point[0] / frame.shape[1]
-    y = point[1] / config.capture.minimap_ratio / frame.shape[0]
-    return x, y
-
-
-def convert_to_absolute(point, frame):
-    """
-    Converts POINT into absolute coordinates (in pixels) based on FRAME.
-    Normalizes the units of the vertical axis to equal those of the horizontal
-    axis by using config.mm_ratio.
-    :param point:   The point in relative coordinates.
-    :param frame:   The image to use as a reference.
-    :return:        The given point in absolute coordinates.
-    """
-
-    x = int(round(point[0] * frame.shape[1]))
-    y = int(round(point[1] * config.capture.minimap_ratio * frame.shape[0]))
-    return x, y
-
-
 def filter_color(img, ranges):
     """
     Returns a filtered copy of IMG that only contains pixels within the given RANGES.
@@ -232,24 +161,6 @@ def filter_color(img, ranges):
     result = np.zeros_like(img, np.uint8)
     result[color_mask] = img[color_mask]
     return result
-
-
-def draw_location(minimap, pos, color):
-    """
-    Draws a visual representation of POINT onto MINIMAP. The radius of the circle represents
-    the allowed error when moving towards POINT.
-    :param minimap:     The image on which to draw.
-    :param pos:         The location (as a tuple) to depict.
-    :param color:       The color of the circle.
-    :return:            None
-    """
-
-    center = convert_to_absolute(pos, minimap)
-    cv2.circle(minimap,
-               center,
-               round(minimap.shape[1] * settings.move_tolerance),
-               color,
-               1)
 
 
 def print_separator():

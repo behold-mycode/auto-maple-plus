@@ -1,0 +1,46 @@
+{
+    "coordinates": {
+        "gamewindow": {
+            "player_icon_minimap": {
+                "x": 91,
+                "y": 227
+            },
+            "rune_icon_minimap": {
+                "x": -1,
+                "y": -1
+            },
+            "cursedRune_ui_gamewindow": {
+                "x": -1,
+                "y": -1
+            }
+        },
+        "runeCursedWindow": {
+            "player_icon_minimap": {
+                "x": 87,
+                "y": 203
+            },
+            "rune_icon_minimap": {
+                "x": 99,
+                "y": 181
+            },
+            "cursedRune_ui_gamewindow": {
+                "x": 702,
+                "y": 447
+            }
+        },
+        "runeCursedWindow2": {
+            "player_icon_minimap": {
+                "x": 161,
+                "y": 201
+            },
+            "rune_icon_minimap": {
+                "x": 93,
+                "y": 179
+            },
+            "cursedRune_ui_gamewindow": {
+                "x": 705,
+                "y": 447
+            }
+        }
+    }
+}

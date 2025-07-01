@@ -92,12 +92,12 @@ def reset():
     arduino_baud = 115200
     
     # Window Position Configuration
-    use_manual_window_position = True
-    use_hotkey_window_selection = True
-    maple_window_left = 2945
-    maple_window_top = 58
-    maple_window_width = 2169
-    maple_window_height = 1207
+use_manual_window_position = True  # Enabled - using manual configuration
+use_hotkey_window_selection = True
+maple_window_left = 2706  # Enabled - using manual configuration
+maple_window_top = 206  # Enabled - using manual configuration
+maple_window_width = 1141  # Enabled - using manual configuration
+maple_window_height = 633  # Enabled - using manual configuration
 
 
 # The allowed error from the destination when moving towards a Point
@@ -121,15 +121,15 @@ arduino_baud = 115200
 
 # === Window Position Configuration ===
 # Set to True to use manual window position instead of auto-detection
-use_manual_window_position = True
+use_manual_window_position = True  # Enabled - using manual configuration
 
 # Set to True to enable hotkey window selection (press F12 to select window)
 use_hotkey_window_selection = True
 
 # These are the coordinates of your MapleStory window on screen
-maple_window_left = 2945
-maple_window_top = 58
-maple_window_width = 2169
-maple_window_height = 1207
+maple_window_left = 2706  # Enabled - using manual configuration
+maple_window_top = 206  # Enabled - using manual configuration
+maple_window_width = 1141  # Enabled - using manual configuration
+maple_window_height = 633  # Enabled - using manual configuration
 
 reset()

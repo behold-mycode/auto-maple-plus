@@ -92,4 +92,14 @@
 - **Template Matching**: OpenCV-based image recognition
 - **Screen Capture**: MSS-based screen capture system
 - **Input Simulation**: Windows interception for keyboard input
-- **Modular Architecture**: Extensible component-based design 
+- **Modular Architecture**: Extensible component-based design
+
+## [Unreleased]
+### Added
+- Improved minimap detection using minimap buttons as anchors
+- Added scaling factor database to improve detection across different resolutions
+- Added diagnostic tool for testing minimap button detection
+
+### Fixed
+- Reduced false positives in minimap detection by using button anchors
+- Improved template matching by constraining search areas 
