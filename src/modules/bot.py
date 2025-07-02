@@ -49,13 +49,18 @@ class Bot(Configurable):
         self.rune_closest_pos = (0, 0)      # Location of the Point closest to rune
         self.submodules = []
         self.command_book = None            # CommandBook instance
-        # self.module_name = None
-        # self.buff = components.Buff()
-
-        # self.command_book = {}
-        # for c in (components.Wait, components.Walk, components.Fall,
-        #           components.Move, components.Adjust, components.Buff):
-        #     self.command_book[c.__name__.lower()] = c
+        
+        # Cached settings to avoid Tkinter threading issues
+        self.cached_settings = {
+            'auto_feed': False,
+            'num_pets': 1,
+            'auto_buff_exp': False,
+            'expbuff_use_interval': 1,
+            'cs_reset_toggle': False,
+            'cs_reset_interval': 1
+        }
+        self.last_settings_update = 0
+        self.settings_update_interval = 1.0  # Update settings every second
 
         config.routine = Routine()
 
@@ -75,6 +80,25 @@ class Bot(Configurable):
         print('\n[~] Started main bot loop')
         self.thread.start()
 
+    def _update_settings_cache(self):
+        """Update cached settings from GUI (called from main thread)."""
+        try:
+            if hasattr(config, 'gui') and config.gui is not None:
+                pet_settings = config.gui.settings.pets
+                exp_buff_settings = config.gui.settings.expbuffsettings
+                misc_settings = config.gui.settings.miscsettings
+                
+                self.cached_settings = {
+                    'auto_feed': pet_settings.auto_feed.get(),
+                    'num_pets': pet_settings.num_pets.get(),
+                    'auto_buff_exp': exp_buff_settings.expbuff_use_toggle.get(),
+                    'expbuff_use_interval': exp_buff_settings.expbuff_use_interval.get(),
+                    'cs_reset_toggle': misc_settings.cs_reset_toggle.get(),
+                    'cs_reset_interval': misc_settings.cs_reset_interval.get()
+                }
+        except Exception as e:
+            print(f"[WARN] Failed to update settings cache: {e}")
+
     def _main(self):
         """
         The main body of Bot that executes the user's routine.
@@ -90,19 +114,20 @@ class Bot(Configurable):
             if config.enabled and len(config.routine) > 0:
                 # Buff and feed pets
                 self.command_book.buff.main()
-                pet_settings = config.gui.settings.pets
-                auto_feed = pet_settings.auto_feed.get()
-                num_pets = pet_settings.num_pets.get()
-
-                # EXP Buff settings
-                exp_buff_settings = config.gui.settings.expbuffsettings
-                auto_buff_exp = exp_buff_settings.expbuff_use_toggle.get()
-                expbuff_use_interval = exp_buff_settings.expbuff_use_interval.get()
-
-                # CS reset settings
-                misc_settings = config.gui.settings.miscsettings
-                cs_reset_toggle = misc_settings.cs_reset_toggle.get()
-                cs_reset_interval = misc_settings.cs_reset_interval.get()
+                
+                # Update settings cache periodically
+                now = time.time()
+                if now - self.last_settings_update > self.settings_update_interval:
+                    config.gui.root.after(0, self._update_settings_cache)
+                    self.last_settings_update = now
+                
+                # Use cached settings
+                auto_feed = self.cached_settings['auto_feed']
+                num_pets = self.cached_settings['num_pets']
+                auto_buff_exp = self.cached_settings['auto_buff_exp']
+                expbuff_use_interval = self.cached_settings['expbuff_use_interval']
+                cs_reset_toggle = self.cached_settings['cs_reset_toggle']
+                cs_reset_interval = self.cached_settings['cs_reset_interval']
 
                 #feed pets
                 now = time.time()
@@ -124,7 +149,7 @@ class Bot(Configurable):
                         press(self.config['Wealth Acquisition'], 1)
                         time.sleep(0.4)
                         last_30m_expbuffed = now
-                    config.gui.view.monitoringconsole.set_nextexpbuffstat(str(round((expbuff_use_interval*900 - (now - last_30m_expbuffed))))+"s")
+                    config.gui.root.after(0, config.gui.view.monitoringconsole.set_nextexpbuffstat, str(round((expbuff_use_interval*900 - (now - last_30m_expbuffed))))+"s")
                     if now - last_30m_expbuffed > expbuff_use_interval*900 + 10:
                         press(self.config['2x EXP Buff'], 1)
                         time.sleep(0.2)
@@ -141,20 +166,20 @@ class Bot(Configurable):
                         time.sleep(0.2)
                         last_30m_expbuffed = now
                 elif auto_buff_exp == False:
-                    config.gui.view.monitoringconsole.set_nextexpbuffstat("Disabled")
+                    config.gui.root.after(0, config.gui.view.monitoringconsole.set_nextexpbuffstat, "Disabled")
 
                 # Enter cash shop to reset DC timer
-                config.gui.view.monitoringconsole.set_nextcsresetstat(str(round((cs_reset_interval*3600 - (now - last_enteredCS))))+"s")
+                config.gui.root.after(0, config.gui.view.monitoringconsole.set_nextcsresetstat, str(round((cs_reset_interval*3600 - (now - last_enteredCS))))+"s")
                 if cs_reset_toggle and now - last_enteredCS > cs_reset_interval*3600:
                     print("Entering cash shop for reset")
                     enterCashshop(self)
                     last_enteredCS = now
                 elif cs_reset_toggle == False:
-                    config.gui.view.monitoringconsole.set_nextcsresetstat("Disabled")
+                    config.gui.root.after(0, config.gui.view.monitoringconsole.set_nextcsresetstat, "Disabled")
 
                 # Highlight the current Point
-                config.gui.view.routine.select(config.routine.index)
-                config.gui.view.details.display_info(config.routine.index)
+                config.gui.root.after(0, config.gui.view.routine.select, config.routine.index)
+                config.gui.root.after(0, config.gui.view.details.display_info, config.routine.index)
 
                 # Execute next Point in the routine
                 element = config.routine[config.routine.index]
@@ -188,7 +213,8 @@ class Bot(Configurable):
     def load_commands(self, file):
         try:
             self.command_book = CommandBook(file)
-            config.gui.settings.update_class_bindings()
+            if hasattr(config, 'gui') and config.gui is not None:
+                config.gui.root.after(0, config.gui.settings.update_class_bindings)
         except ValueError:
             pass    # TODO: UI warning popup, say check cmd for errors
         #

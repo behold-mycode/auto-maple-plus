@@ -1,6 +1,7 @@
 """The central program that ties all the modules together."""
 
 import time
+import threading
 from src.modules.bot import Bot
 from src.modules.capture import Capture
 from src.modules.notifier import Notifier
@@ -9,33 +10,81 @@ from src.modules.listener import Listener
 from src.modules.gui import GUI
 
 
-bot = Bot()
-capture = Capture()
-notifier = Notifier()
-listener = Listener()
-watcher = Watcher()
+def create_modules():
+    """Create all modules but don't start them yet."""
+    bot = Bot()
+    capture = Capture()
+    notifier = Notifier()
+    listener = Listener()
+    watcher = Watcher()
+    
+    return bot, capture, notifier, listener, watcher
 
-bot.start()
-while not bot.ready:
-    time.sleep(0.01)
 
-capture.start()
-while not capture.ready:
-    time.sleep(0.01)
+def start_background_threads(gui):
+    """Start all background threads after GUI is running."""
+    
+    def start_threads():
+        print('\n[~] Starting background threads...')
+        
+        # Start bot
+        gui.bot.start()
+        while not gui.bot.ready:
+            time.sleep(0.01)
+        print('[~] Bot ready')
+        
+        # Start capture
+        gui.capture.start()
+        while not gui.capture.ready:
+            time.sleep(0.01)
+        print('[~] Capture ready')
+        
+        # Start notifier
+        gui.notifier.start()
+        while not gui.notifier.ready:
+            time.sleep(0.01)
+        print('[~] Notifier ready')
+        
+        # Start watcher
+        gui.watcher.start()
+        while not gui.watcher.ready:
+            time.sleep(0.01)
+        print('[~] Watcher ready')
+        
+        # Start listener
+        gui.listener.start()
+        while not gui.listener.ready:
+            time.sleep(0.01)
+        print('[~] Listener ready')
+        
+        print('\n[~] Successfully initialized Auto Maple')
+    
+    # Schedule the thread startup to happen after GUI is running
+    gui.root.after(100, start_threads)
 
-notifier.start()
-while not notifier.ready:
-    time.sleep(0.01)
 
-watcher.start()
-while not watcher.ready:
-    time.sleep(0.01)      
+def main():
+    """Main entry point with safe startup sequence."""
+    
+    # Create all modules first
+    bot, capture, notifier, listener, watcher = create_modules()
+    
+    # Create GUI (this will set up Tkinter)
+    gui = GUI()
+    
+    # Store modules in GUI for access by background threads
+    gui.bot = bot
+    gui.capture = capture
+    gui.notifier = notifier
+    gui.listener = listener
+    gui.watcher = watcher
+    
+    # Schedule background thread startup after GUI is running
+    start_background_threads(gui)
+    
+    # Start GUI mainloop (this blocks until GUI is closed)
+    gui.start()
 
-listener.start()
-while not listener.ready:
-    time.sleep(0.01)
 
-print('\n[~] Successfully initialized Auto Maple')
-
-gui = GUI()
-gui.start()
+if __name__ == '__main__':
+    main()

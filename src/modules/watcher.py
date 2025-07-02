@@ -158,7 +158,7 @@ class Watcher:
                 # Check for number of other players in map
                 if OTHER_TEMPLATE is not None:
                     # Use direct template matching with multi-scale for better detection
-                    others_matches = utils.multi_scale_match(minimap, OTHER_TEMPLATE, threshold=0.7)
+                    others_matches = utils.multi_scale_match(minimap, OTHER_TEMPLATE, threshold=0.95)
                     others = len(others_matches)
                     if others > 1:
                         config.map_overcrowded = True

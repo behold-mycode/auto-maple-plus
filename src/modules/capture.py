@@ -402,7 +402,7 @@ class Capture:
             if OTHER_TEMPLATE is not None:
                 try:
                     # Use multi-scale matching with higher threshold to reduce false positives
-                    others_matches = utils.multi_scale_match(minimap, OTHER_TEMPLATE, threshold=0.75, scale_range=(0.9, 1.1), scale_steps=3)
+                    others_matches = utils.multi_scale_match(minimap, OTHER_TEMPLATE, threshold=0.95, scale_range=(0.9, 1.1), scale_steps=3)
                     
                     if others_matches:
                         # Filter by confidence and apply non-maximum suppression

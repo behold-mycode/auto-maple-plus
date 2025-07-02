@@ -36,14 +36,24 @@ def _get_keyboard_controller():
             _keyboard_controller = True  # keyboard library doesn't need controller
     return _keyboard_controller
 
-def press(key: str, duration: float = 0.1):
+def press(key: str, duration: float = 0.1, down_time: float = None, up_time: float = None):
     """
     Press a key for a specified duration.
     
     Args:
         key: The key to press (string representation)
         duration: How long to hold the key in seconds
+        down_time: Legacy parameter (ignored)
+        up_time: Legacy parameter (ignored)
     """
+    # Try Arduino input first if available
+    try:
+        from .arduino_input import press as arduino_press
+        arduino_press(key, duration)
+        return
+    except ImportError:
+        pass
+    
     if not KEYBOARD_AVAILABLE:
         print(f"[WARN] Keyboard input disabled, cannot press {key}")
         return

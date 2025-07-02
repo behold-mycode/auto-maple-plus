@@ -71,7 +71,7 @@ class Notifier:
                         if self.watchlist[item]["toggle"] == True:
                             alertSent = self.alert(config.webhook, user_timezone, self.lastAlertTimeDict, self.watchlist[item]["msg"])
                             if item == "chatbox_msg" and alertSent:
-                                    self.alertFile(target=config.webhook, image="assets\chat.png")
+                                    self.alertFile(target=config.webhook, image="assets/chat.png")
                             if item == "character_dead" and reviveWhenDead:
                                 automation.autoRevive()
                             if item == "char_in_town" and pauseInTown:

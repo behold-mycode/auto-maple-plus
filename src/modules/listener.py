@@ -149,7 +149,7 @@ class Listener(Configurable):
             Listener.recalibrate_minimap()      # Recalibrate only when being enabled.
 
         config.enabled = not config.enabled
-        config.gui.view.monitoringconsole.set_enabledstat(config.enabled)
+        config.gui.root.after(0, config.gui.view.monitoringconsole.set_enabledstat, config.enabled)
         utils.print_state()
 
         # Cross-platform sound
@@ -204,12 +204,12 @@ class Listener(Configurable):
         config.capture.calibrated = False
         while not config.capture.calibrated:
             time.sleep(0.01)
-        config.gui.edit.minimap.redraw()
+        config.gui.root.after(0, config.gui.edit.minimap.redraw)
 
     @staticmethod
     def record_position():
         pos = tuple('{:.3f}'.format(round(i, 3)) for i in config.player_pos)
         now = datetime.now().strftime('%I:%M:%S %p')
-        config.gui.edit.record.add_entry(now, pos)
+        config.gui.root.after(0, config.gui.edit.record.add_entry, now, pos)
         print(f'\n[~] Recorded position ({pos[0]}, {pos[1]}) at {now}')
         time.sleep(0.6)

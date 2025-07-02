@@ -27,6 +27,15 @@ class GUI:
         icon = tk.PhotoImage(file='assets/icon.png')
         self.root.iconphoto(False, icon)
         self.root.geometry(GUI.RESOLUTIONS['DEFAULT'])
+        # Force window to laptop monitor using macOS-specific approach
+        # Center the window on the laptop monitor (0-2560 range)
+        window_width = 1200  # Approximate GUI width
+        window_height = 800  # Approximate GUI height
+        laptop_center_x = 1280  # Center of laptop monitor (2560/2)
+        laptop_center_y = 720   # Center of laptop monitor (1440/2)
+        x = laptop_center_x - (window_width // 2)
+        y = laptop_center_y - (window_height // 2)
+        self.root.geometry(f"{GUI.RESOLUTIONS['DEFAULT']}+{x}+{y}")
         self.root.resizable(False, False)
 
         # Initialize GUI variables
@@ -75,20 +84,29 @@ class GUI:
         page = nav.tab(curr_id, 'text')
         if self.root.state() != 'zoomed':
             if page in GUI.RESOLUTIONS:
-                self.root.geometry(GUI.RESOLUTIONS[page])
+                # Keep window on laptop monitor when switching tabs
+                window_width = 1200
+                window_height = 800
+                laptop_center_x = 1280
+                laptop_center_y = 720
+                x = laptop_center_x - (window_width // 2)
+                y = laptop_center_y - (window_height // 2)
+                self.root.geometry(f"{GUI.RESOLUTIONS[page]}+{x}+{y}")
             else:
-                self.root.geometry(GUI.RESOLUTIONS['DEFAULT'])
+                # Keep window on laptop monitor when switching tabs
+                window_width = 1200
+                window_height = 800
+                laptop_center_x = 1280
+                laptop_center_y = 720
+                x = laptop_center_x - (window_width // 2)
+                y = laptop_center_y - (window_height // 2)
+                self.root.geometry(f"{GUI.RESOLUTIONS['DEFAULT']}+{x}+{y}")
 
     def start(self):
         """Starts the GUI as well as any scheduled functions."""
 
-        display_thread = threading.Thread(target=self._display_minimap)
-        display_thread.daemon = True
-        display_thread.start()
-
-        layout_thread = threading.Thread(target=self._save_layout)
-        layout_thread.daemon = True
-        layout_thread.start()
+        # Start GUI background threads using Tkinter's after() for thread safety
+        self.root.after(200, self._start_background_threads)
 
         # Load previously used config
         print("[~] Attempting to load last used command book and routine")
@@ -107,6 +125,19 @@ class GUI:
             print("[!] Last loaded command book not found)")
             
         self.root.mainloop()
+
+    def _start_background_threads(self):
+        """Start GUI background threads safely after mainloop is running."""
+        
+        # Start display thread
+        display_thread = threading.Thread(target=self._display_minimap)
+        display_thread.daemon = True
+        display_thread.start()
+
+        # Start layout thread
+        layout_thread = threading.Thread(target=self._save_layout)
+        layout_thread.daemon = True
+        layout_thread.start()
 
     def _display_minimap(self):
         delay = 1 / GUI.DISPLAY_FRAME_RATE

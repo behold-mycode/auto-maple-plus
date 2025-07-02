@@ -15,8 +15,9 @@ def update(func):
 
     def f(self, *args, **kwargs):
         result = func(self, *args, **kwargs)
-        config.gui.set_routine(self.display)
-        config.gui.view.details.update_details()
+        if config.gui is not None:
+            config.gui.set_routine(self.display)
+            config.gui.view.details.update_details()
         return result
     return f
 
@@ -187,7 +188,8 @@ class Routine:
         config.layout = None
         settings.reset()
 
-        config.gui.clear_routine_info()
+        if config.gui is not None:
+            config.gui.clear_routine_info()
 
     def load(self, file=None):
         """
@@ -254,8 +256,10 @@ class Routine:
 
             if first in SYMBOLS:
                 c = SYMBOLS[first]
-            elif first in config.bot.command_book:
+            elif config.bot is not None and first in config.bot.command_book:
                 c = config.bot.command_book[first]
+            elif config.bot is None:
+                raise RuntimeError('config.bot is not set. Cannot resolve command book for routine loading in headless/test context.')
             else:
                 print(line_error + f"Command '{first}' does not exist.")
                 return

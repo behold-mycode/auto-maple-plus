@@ -109,7 +109,7 @@ class Label(Component):
     def __init__(self, label):
         super().__init__(locals())
         self.label = str(label)
-        if self.label in config.routine.labels:
+        if config.routine is not None and self.label in config.routine.labels:
             raise ValueError
         self.links = set()
         self.index = None

@@ -1,5 +1,22 @@
 # Astelle Setup Guide
 
+## ⚠️ **IMPORTANT: Arduino Setup Required**
+
+This project uses **Arduino Leonardo** for keyboard input instead of software-based methods. This ensures cross-platform compatibility and undetectable input.
+
+### **Arduino Setup (Required First Step)**
+
+1. **Follow the Arduino Setup Guide**: Read `ARDUINO_SETUP.md` for complete instructions
+2. **Upload Arduino Sketch**: Upload `arduino_keyboard_controller.ino` to your Arduino Leonardo
+3. **Configure Port**: Set your Arduino port in `src/common/settings.py`
+4. **Test Connection**: Ensure Arduino is connected before starting Auto Maple
+
+### **Why Arduino?**
+- **Cross-platform**: Works on Windows, macOS, and Linux
+- **Undetectable**: Sends genuine hardware keyboard events
+- **Reliable**: No dependency on OS-specific APIs
+- **Secure**: Physical hardware input, not software simulation
+
 ## 🎯 **Updated Keybindings Summary**
 
 ### **Movement**
@@ -37,6 +54,12 @@
 - **Cash Shop**: `` ` ``
 
 ## 🚀 **Step-by-Step Setup**
+
+### **Step 0: Arduino Setup (REQUIRED)**
+1. **Read Arduino Guide**: `ARDUINO_SETUP.md`
+2. **Upload Sketch**: Upload `arduino_keyboard_controller.ino` to Arduino Leonardo
+3. **Configure Port**: Edit `src/common/settings.py` and set `arduino_port`
+4. **Test Connection**: Ensure Arduino is connected and recognized
 
 ### **Step 1: Load Your Command Book**
 
@@ -113,6 +136,8 @@ If you need to change any keybindings:
 4. **Save the file**
 5. **Reload the command book** in Auto Maple
 
+**Note**: The command book uses Arduino input methods (`from src.common.arduino_input import press, key_down, key_up`). This ensures cross-platform compatibility and undetectable input.
+
 ### **Adding New Skills**
 
 To add a new skill:
@@ -147,6 +172,26 @@ q (Shine) → w (Sirius) → e (Sadalsuud) → r (Time Binder) → t (Savior's C
 ```
 
 ## 🔧 **Troubleshooting**
+
+### **Arduino Issues (Most Common)**
+
+1. **Arduino not detected**
+   - Check USB cable connection
+   - Verify Arduino IDE shows correct board
+   - Check port name in `src/common/settings.py`
+   - Try different USB ports
+
+2. **Serial connection failed**
+   - Ensure Arduino is connected before starting bot
+   - Check that no other program is using the serial port
+   - Verify baud rate (default: 115200)
+   - Check permissions (Linux/macOS)
+
+3. **Keys not working**
+   - Ensure MapleStory window is focused
+   - Check that Arduino sketch uploaded successfully
+   - Test with Serial Monitor to see if commands are received
+   - Verify key mappings in Arduino code
 
 ### **Common Issues**
 
@@ -209,6 +254,8 @@ q (Shine) → w (Sirius) → e (Sadalsuud) → r (Time Binder) → t (Savior's C
 - **Command Book**: `resources/command_books/astelle.py`
 - **Routine**: `resources/routines/astelle/generic_flat_map.csv`
 - **Setup Guide**: `ASTELLE_SETUP_GUIDE.md`
+- **Arduino Setup**: `ARDUINO_SETUP.md`
+- **Arduino Sketch**: `arduino_keyboard_controller.ino`
 - **Routine Creation Guide**: `ROUTINE_CREATION_GUIDE.md`
 
 Remember: Start simple and gradually add complexity as you become familiar with the system! 
