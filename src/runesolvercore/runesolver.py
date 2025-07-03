@@ -155,7 +155,7 @@ class RuneSolverML:
 # Initialize ML solver
 ml_solver = RuneSolverML()
 
-def solve_rune_raw():
+def solve_rune_ml():
     """Solves rune puzzles using either ML or computer vision."""
     # Try ML method first if available
     if ml_solver.model_loaded:
@@ -309,36 +309,19 @@ def find_arrow_directions(img, debug=False):
 
     return sorted(directions, key=lambda x: x[1][1])
 
-def locate(self, *color):
-    with gdi_capture.CaptureWindow(self.hwnd) as img:
-        locations = []
-        if img is None:
-            pass
-        else:
-            # Crop the image to show only the mini-map.
-            img_cropped = img[self.left:self.right, self.top:self.bottom]
-            height, width = img_cropped.shape[0], img_cropped.shape[1]
-            # Reshape the image from 3-d to 2-d by row-major order.
-            img_reshaped = np.reshape(img_cropped, ((width * height), 4), order="C")
-            for c in color:
-                sum_x, sum_y, count = 0, 0, 0
-                # Find all index(s) of np.ndarray matching a specified BGRA tuple.
-                matches = np.where(np.all((img_reshaped == c), axis=1))[0]
-                for idx in matches:
-                    # Calculate the original (x, y) position of each matching index.
-                    sum_x += idx % width
-                    sum_y += idx // width
-                    count += 1
-                if count > 0:
-                    x_pos = sum_x / count
-        
-                    y_pos = sum_y / count
-                    locations.append((x_pos, y_pos))
-        return locations
+def locate_rune_in_minimap():
+    """Locate rune using the existing capture system instead of GDI."""
+    try:
+        if hasattr(config.capture, 'minimap') and config.capture.minimap:
+            return config.capture.minimap.get('rune_active', False)
+        return False
+    except Exception as e:
+        print(f"Error checking rune location: {e}")
+        return False
 
 def get_rune_location(self):
-    location = locate(self,RUNE_BGRA)
-    return location[0] if len(location) > 0 else None
+    """Check if rune is still present using the capture system."""
+    return not locate_rune_in_minimap()  # Returns True if rune is solved (not present)
 
 def enterCashshop(self):
     """Enters the cash shop to reset rune cooldown."""
@@ -433,9 +416,8 @@ def solve_rune_raw(self):
             
             time.sleep(1)
             
-            # Check if rune was solved
-            rune_location = get_rune_location(self)
-            if rune_location is None:
+            # Check if rune was solved by checking if it's no longer active in minimap
+            if not locate_rune_in_minimap():
                 print("Rune has been solved successfully!")
                 time.sleep(1)
                 return True
@@ -445,12 +427,14 @@ def solve_rune_raw(self):
             print("Could not identify complete arrow sequence, trying again...")
             press(npcChatKey, 1)
             time.sleep(1.5)
-            attempts += 1
-            if attempts > 3:
-                print("Too many failed attempts, entering cash shop to reset...")
+            
+        attempts += 1
+        if attempts > 3:
+            print("Too many failed attempts, entering cash shop to reset...")
+            if hasattr(self, 'config'):
                 enterCashshop(self)
-                attempts = 0
-                time.sleep(0.5)
-                return False
+            attempts = 0
+            time.sleep(0.5)
+            return False
         time.sleep(3)
     return False

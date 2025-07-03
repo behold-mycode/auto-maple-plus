@@ -292,4 +292,11 @@ class Layout:
 
 
 def get_layouts_dir():
-    return os.path.join(config.RESOURCES_DIR, 'layouts', config.bot.command_book.name)
+    if (config.bot and 
+        hasattr(config.bot, 'command_book') and 
+        config.bot.command_book and
+        hasattr(config.bot, 'module_name')):
+        return os.path.join(config.RESOURCES_DIR, 'layouts', config.bot.module_name)
+    else:
+        # Fallback to a default directory if command book is not loaded
+        return os.path.join(config.RESOURCES_DIR, 'layouts', 'default')

@@ -256,7 +256,10 @@ class Routine:
 
             if first in SYMBOLS:
                 c = SYMBOLS[first]
-            elif config.bot is not None and first in config.bot.command_book:
+            elif (config.bot is not None and 
+                  hasattr(config.bot, 'command_book') and 
+                  config.bot.command_book and 
+                  first in config.bot.command_book):
                 c = config.bot.command_book[first]
             elif config.bot is None:
                 raise RuntimeError('config.bot is not set. Cannot resolve command book for routine loading in headless/test context.')
@@ -278,7 +281,13 @@ class Routine:
     def get_all_components():
         """Returns a dictionary mapping all creatable Components to their names."""
 
-        options = config.bot.command_book.dict.copy()
+        options = {}
+        if (config.bot and 
+            hasattr(config.bot, 'command_book') and 
+            config.bot.command_book):
+            # CommandBook provides dict interface through __iter__ or we can use .dict
+            options = config.bot.command_book.dict.copy()
+        
         for e in (Point, Label, Jump, Setting):
             options[e.__name__.lower()] = e
         return options

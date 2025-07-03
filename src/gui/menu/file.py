@@ -94,7 +94,14 @@ class File(MenuBarItem):
             import_root.save_config()
 
 def get_routines_dir():
-    target = os.path.join(config.RESOURCES_DIR, 'routines', config.bot.command_book.name)
+    if (config.bot and 
+        hasattr(config.bot, 'command_book') and 
+        config.bot.command_book and
+        hasattr(config.bot, 'module_name')):
+        target = os.path.join(config.RESOURCES_DIR, 'routines', config.bot.module_name)
+    else:
+        target = os.path.join(config.RESOURCES_DIR, 'routines', 'default')
+    
     if not os.path.exists(target):
         os.makedirs(target)
     return target

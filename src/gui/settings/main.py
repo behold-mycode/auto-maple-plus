@@ -7,6 +7,7 @@ from src.gui.settings.expbuffsettings import ExpBuff
 from src.gui.settings.miscsettings import Misc
 from src.gui.interfaces import Tab, Frame
 from src.common import config
+from src.common.interfaces import Configurable
 
 
 class Settings(Tab):
@@ -36,6 +37,16 @@ class Settings(Tab):
 
     def update_class_bindings(self):
         self.class_bindings.destroy()
-        class_name = config.bot.command_book.name.capitalize()
-        self.class_bindings = KeyBindings(self.column2, f'{class_name} Keybindings', config.bot.command_book)
+        
+        # Check if command book is properly loaded
+        if (config.bot and 
+            hasattr(config.bot, 'command_book') and 
+            config.bot.command_book and
+            hasattr(config.bot, 'module_name')):
+            class_name = config.bot.module_name.capitalize()
+            # Use the CommandBook instance directly - it's already a Configurable
+            self.class_bindings = KeyBindings(self.column2, f'{class_name} Keybindings', config.bot.command_book)
+        else:
+            self.class_bindings = KeyBindings(self.column2, f'No Command Book Selected', None)
+        
         self.class_bindings.pack(side=tk.TOP, fill='x', expand=True)

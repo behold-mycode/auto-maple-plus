@@ -108,21 +108,8 @@ class GUI:
         # Start GUI background threads using Tkinter's after() for thread safety
         self.root.after(200, self._start_background_threads)
 
-        # Load previously used config
-        print("[~] Attempting to load last used command book and routine")
-        import_root = Import_Settings("CBR")
-        last_cb = import_root.get("last_cb")
-        last_routine = import_root.get("last_routine")
-        if last_cb != None:
-            print()
-            try:
-                config.bot.load_commands(last_cb)
-                if last_routine != None:
-                   config.routine.load(last_routine)
-            except:
-                pass
-        else:
-            print("[!] Last loaded command book not found)")
+        # Load previously used config after a delay to ensure bot is ready
+        self.root.after(1000, self._load_previous_config)
             
         self.root.mainloop()
 
@@ -152,6 +139,24 @@ class GUI:
             if config.layout is not None and settings.record_layout:
                 config.layout.save()
             time.sleep(5)
+
+    def _load_previous_config(self):
+        """Load previously used command book and routine after bot is ready."""
+        print("[~] Attempting to load last used command book and routine")
+        import_root = Import_Settings("CBR")
+        last_cb = import_root.get("last_cb")
+        last_routine = import_root.get("last_routine")
+        if last_cb != None:
+            print()
+            try:
+                if hasattr(config, 'bot') and config.bot:
+                    config.bot.load_commands(last_cb)
+                    if last_routine != None:
+                       config.routine.load(last_routine)
+            except Exception as e:
+                print(f"[WARN] Failed to load previous config: {e}")
+        else:
+            print("[!] Last loaded command book not found)")
 
 
 if __name__ == '__main__':

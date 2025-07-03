@@ -65,55 +65,6 @@ def multi_match(frame, template, threshold=0.8):
         return []
 
 
-def multi_scale_match(frame, template, threshold=0.8, scale_range=(0.8, 1.2), scale_steps=5):
-    """
-    Finds matches of TEMPLATE in FRAME at multiple scales.
-    :param frame:       The image to search in.
-    :param template:    The template to search for.
-    :param threshold:   The minimum similarity score to consider a match.
-    :param scale_range: Tuple of (min_scale, max_scale).
-    :param scale_steps: Number of scale steps to try.
-    :return:           List of matches [(x, y, scale, confidence), ...].
-    """
-    
-    try:
-        # Ensure both frame and template are grayscale uint8
-        if len(frame.shape) == 3:
-            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        else:
-            frame_gray = frame.astype(np.uint8)
-            
-        if len(template.shape) == 3:
-            template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-        else:
-            template_gray = template.astype(np.uint8)
-        
-        matches = []
-        scales = np.linspace(scale_range[0], scale_range[1], scale_steps)
-        
-        for scale in scales:
-            # Resize template
-            width = int(template_gray.shape[1] * scale)
-            height = int(template_gray.shape[0] * scale)
-            if width > 0 and height > 0:
-                resized_template = cv2.resize(template_gray, (width, height))
-                
-                # Match template
-                result = cv2.matchTemplate(frame_gray, resized_template, cv2.TM_CCOEFF_NORMED)
-                locations = np.where(result >= threshold)
-                
-                for pt in zip(*locations[::-1]):
-                    confidence = result[pt[1], pt[0]]
-                    matches.append((pt[0], pt[1], scale, confidence))
-        
-        # Sort by confidence (highest first)
-        matches.sort(key=lambda x: x[3], reverse=True)
-        return matches
-    except Exception as e:
-        print(f"[WARN] Multi-scale match failed: {e}")
-        return []
-
-
 def convert_to_relative(point, img):
     """
     Converts absolute coordinates to relative coordinates (0-1 range).

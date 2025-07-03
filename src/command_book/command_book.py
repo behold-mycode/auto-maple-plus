@@ -101,7 +101,9 @@ class CommandBook(Configurable):
             # Only update GUI if it's available
             if hasattr(config, 'gui') and config.gui is not None:
                 config.gui.menu.file.enable_routine_state()
-                config.gui.view.status.set_cb(basename(file))
+                # Update status using the correct reference
+                if hasattr(config.gui, 'view') and hasattr(config.gui.view, 'status'):
+                    config.gui.view.status.set_cb(basename(file))
             # Only clear routine if it's available
             if hasattr(config, 'routine') and config.routine is not None:
                 config.routine.clear()

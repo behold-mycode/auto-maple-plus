@@ -16,9 +16,10 @@ from src.command_book.command_book import CommandBook
 from src.routine.components import Point
 from src.common.interfaces import Configurable
 from src.runesolvercore.runesolver import enterCashshop
-from src.runesolvercore.runesolver import solve_rune_raw
+import numpy as np
 
-
+# Import the RuneSolver class functionality
+import src.runesolvercore.runesolver as runesolver
 
 # The rune's buff icon
 RUNE_BUFF_TEMPLATE = cv2.imread('assets/rune_buff_template.jpg', 0)
@@ -44,9 +45,10 @@ class Bot(Configurable):
         super().__init__('keybindings')
         config.bot = self
 
-        self.rune_active = False
+        # Simple rune solving variables (original approach)
         self.rune_pos = (0, 0)
-        self.rune_closest_pos = (0, 0)      # Location of the Point closest to rune
+        self.rune_closest_pos = (0, 0)
+        
         self.submodules = []
         self.command_book = None            # CommandBook instance
         
@@ -59,43 +61,49 @@ class Bot(Configurable):
             'cs_reset_toggle': False,
             'cs_reset_interval': 1
         }
+        
         self.last_settings_update = 0
-        self.settings_update_interval = 1.0  # Update settings every second
-
-        config.routine = Routine()
-
-        self.hwnd = None
-
+        self.settings_update_interval = 5  # Update settings every 5 seconds
+        
         self.ready = False
         self.thread = threading.Thread(target=self._main)
         self.thread.daemon = True
 
     def start(self):
         """
-        Starts this Bot object's thread.
-        :return:    None
+        Starts this Bot object's main thread.
         """
-
-        self.update_submodules()
-        print('\n[~] Started main bot loop')
-        self.thread.start()
+        print('\n[~] Starting bot')
+        self.ready = True
+        
+        # Load command book
+        config.routine = Routine()
+        # Don't set command_book here - it will be set when load_commands is called
+        
+        # Start main thread
+        t = threading.Thread(target=self._main, daemon=True)
+        t.start()
 
     def _update_settings_cache(self):
-        """Update cached settings from GUI (called from main thread)."""
+        """Update cached settings from the GUI to avoid threading issues."""
         try:
-            if hasattr(config, 'gui') and config.gui is not None:
-                pet_settings = config.gui.settings.pets
-                exp_buff_settings = config.gui.settings.expbuffsettings
-                misc_settings = config.gui.settings.miscsettings
-                
-                self.cached_settings = {
-                    'auto_feed': pet_settings.auto_feed.get(),
-                    'num_pets': pet_settings.num_pets.get(),
-                    'auto_buff_exp': exp_buff_settings.expbuff_use_toggle.get(),
-                    'expbuff_use_interval': exp_buff_settings.expbuff_use_interval.get(),
-                    'cs_reset_toggle': misc_settings.cs_reset_toggle.get(),
-                    'cs_reset_interval': misc_settings.cs_reset_interval.get()
-                }
+            if hasattr(config, 'gui') and config.gui:
+                # Access settings through the correct GUI structure
+                if hasattr(config.gui, 'settings'):
+                    # Access pet settings
+                    if hasattr(config.gui.settings, 'pets'):
+                        self.cached_settings['auto_feed'] = config.gui.settings.pets.auto_feed.get()
+                        self.cached_settings['num_pets'] = config.gui.settings.pets.num_pets.get()
+                    
+                    # Access exp buff settings
+                    if hasattr(config.gui.settings, 'expbuffsettings'):
+                        self.cached_settings['auto_buff_exp'] = config.gui.settings.expbuffsettings.expbuff_use_toggle.get()
+                        self.cached_settings['expbuff_use_interval'] = config.gui.settings.expbuffsettings.expbuff_use_interval.get()
+                    
+                    # Access misc settings
+                    if hasattr(config.gui.settings, 'miscsettings'):
+                        self.cached_settings['cs_reset_toggle'] = config.gui.settings.miscsettings.cs_reset_toggle.get()
+                        self.cached_settings['cs_reset_interval'] = config.gui.settings.miscsettings.cs_reset_interval.get()
         except Exception as e:
             print(f"[WARN] Failed to update settings cache: {e}")
 
@@ -112,85 +120,95 @@ class Bot(Configurable):
         
         while True:
             if config.enabled and len(config.routine) > 0:
-                # Buff and feed pets
-                self.command_book.buff.main()
-                
                 # Update settings cache periodically
                 now = time.time()
                 if now - self.last_settings_update > self.settings_update_interval:
-                    config.gui.root.after(0, self._update_settings_cache)
+                    if hasattr(config, 'gui') and config.gui:
+                        config.gui.root.after_idle(self._update_settings_cache)
                     self.last_settings_update = now
                 
-                # Use cached settings
-                auto_feed = self.cached_settings['auto_feed']
-                num_pets = self.cached_settings['num_pets']
-                auto_buff_exp = self.cached_settings['auto_buff_exp']
-                expbuff_use_interval = self.cached_settings['expbuff_use_interval']
-                cs_reset_toggle = self.cached_settings['cs_reset_toggle']
-                cs_reset_interval = self.cached_settings['cs_reset_interval']
-
-                #feed pets
-                now = time.time()
-                if auto_feed and now - last_fed > 1200 / num_pets:
-                    press(self.config['Feed pet'], 1)
+                # Auto-feed pets
+                if self.cached_settings['auto_feed'] and now - last_fed > 1200:
                     last_fed = now
-
-                #buff exp buff
-                if auto_buff_exp:
-                    if last_30m_expbuffed == None:
-                        press(self.config['2x EXP Buff'], 1)
-                        time.sleep(0.4)
-                        press(self.config['Mushroom Buff'], 1)
-                        time.sleep(0.4)
-                        press(self.config['Additional EXP Buff'], 1)
-                        time.sleep(0.4)
-                        press(self.config['Gold Pot'], 1)
-                        time.sleep(0.4)
-                        press(self.config['Wealth Acquisition'], 1)
-                        time.sleep(0.4)
+                    self.feed_pets()
+                
+                # Auto buff EXP
+                if self.cached_settings['auto_buff_exp']:
+                    expbuff_interval = self.cached_settings['expbuff_use_interval'] * 60  # Convert to seconds
+                    
+                    if last_30m_expbuffed is None or (now - last_30m_expbuffed) >= expbuff_interval:
                         last_30m_expbuffed = now
-                    config.gui.root.after(0, config.gui.view.monitoringconsole.set_nextexpbuffstat, str(round((expbuff_use_interval*900 - (now - last_30m_expbuffed))))+"s")
-                    if now - last_30m_expbuffed > expbuff_use_interval*900 + 10:
-                        press(self.config['2x EXP Buff'], 1)
-                        time.sleep(0.2)
-                    if now - last_30m_expbuffed > 1800 + 10:
-                        press(self.config['Mushroom Buff'], 1)
-                        time.sleep(0.2)
-                        press(self.config['Additional EXP Buff'], 1)
-                        time.sleep(0.2)
-                        press(self.config['Gold Pot'], 1)
-                        time.sleep(0.2)
-                        last_30m_expbuffed = now
-                    if now - last_30m_expbuffed > 7200 + 10:
-                        press(self.config['Wealth Acquisition'], 1)
-                        time.sleep(0.2)
-                        last_30m_expbuffed = now
-                elif auto_buff_exp == False:
-                    config.gui.root.after(0, config.gui.view.monitoringconsole.set_nextexpbuffstat, "Disabled")
-
-                # Enter cash shop to reset DC timer
-                config.gui.root.after(0, config.gui.view.monitoringconsole.set_nextcsresetstat, str(round((cs_reset_interval*3600 - (now - last_enteredCS))))+"s")
-                if cs_reset_toggle and now - last_enteredCS > cs_reset_interval*3600:
-                    print("Entering cash shop for reset")
-                    enterCashshop(self)
-                    last_enteredCS = now
-                elif cs_reset_toggle == False:
-                    config.gui.root.after(0, config.gui.view.monitoringconsole.set_nextcsresetstat, "Disabled")
-
-                # Highlight the current Point
-                config.gui.root.after(0, config.gui.view.routine.select, config.routine.index)
-                config.gui.root.after(0, config.gui.view.details.display_info, config.routine.index)
-
-                # Execute next Point in the routine
-                element = config.routine[config.routine.index]
-                if config.rune_cd == False:
-                    if self.rune_active and isinstance(element, Point) \
-                            and element.location == self.rune_closest_pos:
-                        self._solve_rune()
-                element.execute()
-                config.routine.step()
+                        if hasattr(self, 'buff') and self.buff:
+                            # Use the buff command from command book if available
+                            if hasattr(self.buff, 'main'):
+                                self.buff.main()
+                            else:
+                                print("[WARN] Buff command not properly initialized")
+                
+                # CS reset functionality
+                if self.cached_settings['cs_reset_toggle']:
+                    cs_reset_interval = self.cached_settings['cs_reset_interval'] * 60
+                    if now - last_enteredCS > cs_reset_interval:
+                        last_enteredCS = now
+                        config.enabled = False
+                        time.sleep(1)
+                        runesolver.enterCashshop()
+                        time.sleep(1)
+                        config.enabled = True
+                
+                # Execute routine sequence
+                self._execute_routine_sequence()
+                
             else:
-                time.sleep(0.01)
+                time.sleep(0.1)
+
+    def _execute_routine_sequence(self):
+        """Execute the routine sequence with rune detection (original approach)."""
+        # Highlight the current Point in GUI
+        config.gui.root.after(0, config.gui.view.routine.select, config.routine.index)
+        config.gui.root.after(0, config.gui.view.details.display_info, config.routine.index)
+        
+        # Get current routine element
+        element = config.routine[config.routine.index]
+        
+        # Check for rune before executing the routine element
+        if not config.rune_cd and self._should_solve_rune():
+            # Calculate distance to rune from all routine points
+            distances = [utils.distance(self.rune_pos, config.routine[i].location) 
+                        for i in range(len(config.routine))]
+            closest_index = np.argmin(distances)
+            self.rune_closest_pos = config.routine[closest_index].location
+            
+            # If we're at the closest point to the rune, solve it
+            if isinstance(element, Point) and element.location == self.rune_closest_pos:
+                self._solve_rune()
+        
+        # Execute the routine element
+        element.execute()
+        
+        # Step to next routine element
+        config.routine.step()
+
+    def _should_solve_rune(self):
+        """Check if we should solve a rune (original approach - direct capture check)."""
+        try:
+            # Direct check of capture system's rune detection
+            if (hasattr(config.capture, 'minimap') and 
+                config.capture.minimap and 
+                config.capture.minimap.get('rune_active', False)):
+                
+                rune_pos = config.capture.minimap.get('rune_pos', None)
+                if rune_pos:
+                    # Convert relative position to absolute position if needed
+                    if config.capture.minimap_sample is not None:
+                        self.rune_pos = utils.convert_to_absolute(rune_pos, config.capture.minimap_sample)
+                    else:
+                        self.rune_pos = rune_pos
+                    return True
+            return False
+        except Exception as e:
+            print(f"[WARN] Error checking rune status: {e}")
+            return False
 
     @utils.run_if_enabled
     def _solve_rune(self):
@@ -201,93 +219,62 @@ class Bot(Configurable):
         :return:        None
         """
         
-        move = self.command_book['move']
-        move(*self.rune_pos).execute()
-        adjust = self.command_book['adjust']
-        adjust(*self.rune_pos).execute()
+        # Check if command book is properly loaded
+        if not self.command_book:
+            print("[ERROR] Command book not properly loaded for rune solving")
+            return
+            
+        # Use the command book's move and adjust commands (CommandBook provides dict interface)
+        if 'move' in self.command_book:
+            move = self.command_book['move']
+            move(*self.rune_pos).execute()
+        
+        if 'adjust' in self.command_book:
+            adjust = self.command_book['adjust']
+            adjust(*self.rune_pos).execute()
+        
         time.sleep(0.5)
         print('\nSolving rune:')
-        solve_rune_raw(self)
-        self.rune_active = False
+        
+        # Create a comprehensive config wrapper for rune solver
+        class RuneSolverConfig:
+            def __init__(self, bot_config):
+                self.config = bot_config
+                # Add hwnd for compatibility (not actually used with MSS capture)
+                self.hwnd = None
+                # Add window boundaries (not used with current MSS implementation)
+                self.left = 0
+                self.top = 0
+                self.right = 100
+                self.bottom = 100
+        
+        solver_instance = RuneSolverConfig(self.config)
+        result = runesolver.solve_rune_raw(solver_instance)
+        
+        if result:
+            print("Rune solved successfully!")
+        else:
+            print("Rune solving failed")
+            
+        self.rune_pos = (0, 0)
+        self.rune_closest_pos = (0, 0)
 
     def load_commands(self, file):
         try:
-            self.command_book = CommandBook(file)
+            # Create CommandBook instance - this handles all the loading logic
+            command_book = CommandBook(file)
+            
+            # Set up the bot interface as originally designed
+            self.command_book = command_book  # The wrapper that provides dict interface
+            self.buff = command_book.buff     # Direct buff access 
+            self.module_name = command_book.name
+            
+            # Update GUI settings if available
             if hasattr(config, 'gui') and config.gui is not None:
                 config.gui.root.after(0, config.gui.settings.update_class_bindings)
-        except ValueError:
+        except ValueError as e:
+            print(f"[ERROR] Failed to load command book: {e}")
             pass    # TODO: UI warning popup, say check cmd for errors
-        #
-        # utils.print_separator()
-        # print(f"[~] Loading command book '{basename(file)}':")
-        #
-        # ext = splitext(file)[1]
-        # if ext != '.py':
-        #     print(f" !  '{ext}' is not a supported file extension.")
-        #     return False
-        #
-        # new_step = components.step
-        # new_cb = {}
-        # for c in (components.Wait, components.Walk, components.Fall):
-        #     new_cb[c.__name__.lower()] = c
-        #
-        # # Import the desired command book file
-        # module_name = splitext(basename(file))[0]
-        # target = '.'.join(['resources', 'command_books', module_name])
-        # try:
-        #     module = importlib.import_module(target)
-        #     module = importlib.reload(module)
-        # except ImportError:     # Display errors in the target Command Book
-        #     print(' !  Errors during compilation:\n')
-        #     for line in traceback.format_exc().split('\n'):
-        #         line = line.rstrip()
-        #         if line:
-        #             print(' ' * 4 + line)
-        #     print(f"\n !  Command book '{module_name}' was not loaded")
-        #     return
-        #
-        # # Check if the 'step' function has been implemented
-        # step_found = False
-        # for name, func in inspect.getmembers(module, inspect.isfunction):
-        #     if name.lower() == 'step':
-        #         step_found = True
-        #         new_step = func
-        #
-        # # Populate the new command book
-        # for name, command in inspect.getmembers(module, inspect.isclass):
-        #     new_cb[name.lower()] = command
-        #
-        # # Check if required commands have been implemented and overridden
-        # required_found = True
-        # for command in [components.Buff]:
-        #     name = command.__name__.lower()
-        #     if name not in new_cb:
-        #         required_found = False
-        #         new_cb[name] = command
-        #         print(f" !  Error: Must implement required command '{name}'.")
-        #
-        # # Look for overridden movement commands
-        # movement_found = True
-        # for command in (components.Move, components.Adjust):
-        #     name = command.__name__.lower()
-        #     if name not in new_cb:
-        #         movement_found = False
-        #         new_cb[name] = command
-        #
-        # if not step_found and not movement_found:
-        #     print(f" !  Error: Must either implement both 'Move' and 'Adjust' commands, "
-        #           f"or the function 'step'")
-        # if required_found and (step_found or movement_found):
-        #     self.module_name = module_name
-        #     self.command_book = new_cb
-        #     self.buff = new_cb['buff']()
-        #     components.step = new_step
-        #     config.gui.menu.file.enable_routine_state()
-        #     config.gui.view.status.set_cb(basename(file))
-        #     config.routine.clear()
-        #     print(f" ~  Successfully loaded command book '{module_name}'")
-        # else:
-        #     print(f" !  Command book '{module_name}' was not loaded")
 
     def update_submodules(self, force=False):
         """
@@ -328,3 +315,11 @@ class Bot(Configurable):
                     i += 3
                 else:
                     i += 1
+
+    def feed_pets(self):
+        """Feed pets using Arduino input."""
+        from src.common.arduino_input import press
+        num_pets = self.cached_settings['num_pets']
+        for _ in range(num_pets):
+            press(self.config['Feed pet'], 1)
+            time.sleep(0.1)

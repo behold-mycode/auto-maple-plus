@@ -27,17 +27,17 @@ def start_background_threads(gui):
     def start_threads():
         print('\n[~] Starting background threads...')
         
-        # Start bot
-        gui.bot.start()
-        while not gui.bot.ready:
-            time.sleep(0.01)
-        print('[~] Bot ready')
-        
-        # Start capture
+        # Start capture first (bot depends on it)
         gui.capture.start()
         while not gui.capture.ready:
             time.sleep(0.01)
         print('[~] Capture ready')
+        
+        # Start bot (depends on capture)
+        gui.bot.start()
+        while not gui.bot.ready:
+            time.sleep(0.01)
+        print('[~] Bot ready')
         
         # Start notifier
         gui.notifier.start()
@@ -51,7 +51,7 @@ def start_background_threads(gui):
             time.sleep(0.01)
         print('[~] Watcher ready')
         
-        # Start listener
+        # Start listener last (depends on other modules)
         gui.listener.start()
         while not gui.listener.ready:
             time.sleep(0.01)

@@ -1,91 +1,64 @@
-"""A module for detecting and notifying the user of dangerous in-game events."""
+"""
+A module for detecting in-game events and managing alerts. Uses automated template matching
+to find specific patterns on screen and set corresponding config flags.
+"""
 
-from src.common import config, utils
-import time
-from datetime import datetime
-import os
 import cv2
+import os
+import time
 import threading
 import numpy as np
-import platform
-from src.routine.components import Point
-from src.common import config
-import sys
-import os
-
-# Add the project root to Python path to find resources
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from datetime import datetime
+from src.common import config, utils
 from resources import watcher_scan_table
 
-import mss
-from src.gui.automation.main import AutomationParams
-import src.modules.automation as automation
 
-# Cross-platform keyboard input handling
-if platform.system() == "Darwin":  # macOS
-    try:
-        import pynput
-        from pynput import keyboard as kb_listener
-        KEYBOARD_AVAILABLE = True
-    except ImportError:
-        print("[WARN] pynput not available on macOS. Install with: pip install pynput")
-        KEYBOARD_AVAILABLE = False
-else:
-    try:
-        import keyboard as kb
-        KEYBOARD_AVAILABLE = True
-    except ImportError:
-        print("[WARN] keyboard library not available")
-        KEYBOARD_AVAILABLE = False
-
-# Load template files with error handling
+#################################
+#    Template Loading Helper   #
+#################################
 def load_template_safe(path):
     """Load a template file with error handling."""
     if os.path.exists(path):
         template = cv2.imread(path, 0)  # Load as grayscale
         if template is not None:
-            return template
+            return template.astype(np.uint8)
     print(f"[WARN] Failed to load template: {path}")
     return None
 
-# A rune's symbol on the minimap (direct template matching)
-RUNE_TEMPLATE = load_template_safe('assets/rune_template.png')
 
-# Other players' symbols on the minimap (direct template matching)
+#################################
+#       Template Loading        #
+#################################
+# Rune CD Templates for bot logic
+RUNE_CD1_TEMPLATE = load_template_safe('assets/runeCD.png')
+RUNE_CD2_TEMPLATE = load_template_safe('assets/runeCD2.png')
+
+# Other watcher templates
+ELITE_TEMPLATE = load_template_safe('assets/elite_template.jpg')
 OTHER_TEMPLATE = load_template_safe('assets/other_template.png')
 
-# The Elite Boss's warning sign
-ELITE_TEMPLATE = cv2.imread('assets/elite_template.jpg', 0)
 
-# Rune CD Templates
-RUNE_CD1_TEMPLATE = cv2.imread('assets/runeCD.png', 0)
-RUNE_CD2_TEMPLATE = cv2.imread('assets/runeCD2.png', 0)
-
-# EXP Text as Chat Anchor
-LOGIN_SCREEN = cv2.imread('assets/Login.png',0)
-SECONDPW_SCREEN = cv2.imread('assets/2ndpwKB.png',0)
-
+#################################
+#      Utility Functions        #
+#################################
 def get_alert_path(name):
+    """Returns the path to an alert with the given NAME."""
     return os.path.join(Watcher.ALERTS_DIR, f'{name}.mp3')
 
 
 class Watcher:
     ALERTS_DIR = os.path.join('assets', 'alerts')
-
+    
     def __init__(self):
+        """Loads alert music and initializes this Watcher object's main thread."""
+        config.watcher = self
         self.ready = False
-        self.thread = threading.Thread(target=self._main)
-        self.thread.daemon = True
-
-        self.room_change_threshold = 0.9
-        self.rune_alert_delay = 270         # 4.5 minutes
-
-        self.detectionTable = {}
 
     def start(self):
-        """Starts this Watcher's thread."""
-        print('\n[~] Started watcher')
-        self.thread.start()
+        """Starts this Watcher object's main thread."""
+        print('\n[~] Starting watcher')
+        t = threading.Thread(target=self._main, daemon=True)
+        t.start()
 
     def _main(self):
         self.ready = True
@@ -109,45 +82,17 @@ class Watcher:
                 continue
                 
             height, width, _ = frame.shape
-            
-            # Check if minimap is available
-            if not config.capture.minimap or 'minimap' not in config.capture.minimap:
-                time.sleep(0.1)
-                continue
-                
-            minimap = config.capture.minimap['minimap'] #minimap only
-            if minimap is None or minimap.size == 0:
-                time.sleep(0.1)
-                continue
+            minimap = config.capture.minimap_sample
 
             #scans in this section only activate if bot is enabled
             if config.enabled:
-                # Check for rune CD
+                # Check for rune CD (keep this - needed for bot logic)
                 runeCD1 = utils.multi_match(frame, RUNE_CD1_TEMPLATE, threshold=0.85)
                 runeCD2 = utils.multi_match(frame, RUNE_CD2_TEMPLATE, threshold=0.85)
                 if len(runeCD1) > 0 or len(runeCD2) > 0:
                     config.rune_cd = True
                 else:
                     config.rune_cd = False
-
-                # Check for rune
-                now = time.time()
-                if not config.bot.rune_active:
-                    if RUNE_TEMPLATE is not None:
-                        # Use direct template matching with multi-scale for better detection
-                        matches = utils.multi_scale_match(minimap, RUNE_TEMPLATE, threshold=0.7)
-                        rune_start_time = now
-                        if matches and config.routine.sequence:
-                            abs_rune_pos = (matches[0][0], matches[0][1])
-                            config.bot.rune_pos = utils.convert_to_relative(abs_rune_pos, minimap)
-                            distances = list(map(distance_to_rune, config.routine.sequence))
-                            index = np.argmin(distances)
-                            config.bot.rune_closest_pos = config.routine[index].location
-                            if config.rune_cd == False:
-                                config.bot.rune_active = True
-                                print(f"[INFO] Rune detected at {config.bot.rune_pos}")
-                elif now - rune_start_time > self.rune_alert_delay:     # Alert if rune hasn't been solved
-                    config.bot.rune_active = False
 
                 # Update key stats into monitoring console
                 if config.rune_cd:
@@ -156,20 +101,12 @@ class Watcher:
                     config.gui.view.monitoringconsole.set_runecdstat("Ready to Solve")
 
                 # Check for number of other players in map
-                if OTHER_TEMPLATE is not None:
-                    # Use direct template matching with multi-scale for better detection
-                    others_matches = utils.multi_scale_match(minimap, OTHER_TEMPLATE, threshold=0.95)
-                    others = len(others_matches)
-                    if others > 1:
-                        config.map_overcrowded = True
-                        print(f"[INFO] {others} other players detected in map")
-                    elif others <= 1:
-                        config.map_overcrowded = False
-                    config.gui.view.monitoringconsole.set_noOthers(str(others))
+                others_count = len(config.others_pos) if hasattr(config, 'others_pos') else 0
+                if others_count > 1:
+                    config.map_overcrowded = True
                 else:
-                    # Fallback if template is not available
                     config.map_overcrowded = False
-                    config.gui.view.monitoringconsole.set_noOthers("0")
+                config.gui.view.monitoringconsole.set_noOthers(str(others_count))
 
                 # Scan against dynamic scan table
                 for scanEntry in std:
@@ -201,118 +138,75 @@ class Watcher:
                             detectionTable[scanEntry] = ""
                             setattr(config,flagname,False)
 
-                #scan for chat
-                try:
-                    game_window = config.capture.window
-                    chatbox_window = {"top": game_window["top"] + game_window["height"] - 125, "left": game_window["left"] + 15, "width": 390, "height":100}
-                    with mss.mss() as sct:
-                        # The screen part to capture
-                        output = "assets/chat.png"
-                        sct_img = sct.grab(chatbox_window)
-                        mss.tools.to_png(sct_img.rgb, sct_img.size, output=output)
-                    img = cv2.imread("assets/chat.png")
-
-                    #remove specifically achievements mega
-                    noAchiv = cv2.bitwise_and(img,img,mask=cv2.bitwise_not(cv2.inRange(img, (255,255,220), (255,255,230))))
-
-                    # set white range and threshold
-                    lowcolor =(210,210,210) #gm chat color is dimmest at 210 210 210
-                    highcolor = (255,255,255) #pure white
-                    thresh = cv2.inRange(noAchiv, lowcolor, highcolor)
-                    #count pixels ch. is 19 pixels
-                    count = np.count_nonzero(thresh)
-                    if count >= 80:
-                        config.chatbox_msg = True
+                # Check for static conditions
+                for scanEntry in sts:
+                    params = sts[scanEntry]
+                    flagname = params.get("flag")
+                    target = cv2.imread("assets/"+params.get("ImgName"),0)
+                    matchCount = utils.multi_match(frame=frame, template=target, threshold=0.8)
+                    if matchCount != []:
+                        setattr(config,flagname,True)
                     else:
-                        config.chatbox_msg = False
-                except:
-                    print("scanforchat fail")
+                        setattr(config,flagname,False)
 
-                #scan for stationary
-                if charLocation_Last == None:
-                    charLocation_Last = config.player_pos
-                    charLocation_Time = datetime.now()
-                if charLocation_Last != config.player_pos:
-                    charLocation_Last = config.player_pos
-                    charLocation_Time = datetime.now()
-                    setattr(config,"player_stuck",False)
-                if config.player_pos == charLocation_Last and (datetime.now()-charLocation_Time).total_seconds() > 15:
-                    setattr(config,"player_stuck",True)
-            
+                # Custom checks
+                charLocation_Current = config.player_pos
+                if charLocation_Last == charLocation_Current:
+                    config.player_stuck = True
+                else:
+                    config.player_stuck = False
+                charLocation_Last = charLocation_Current
 
-            try:
-                config.gui.runtime_console.runtimeFlags.update_All_Flags()
-            except:
-                pass
-
-            #scans below here activate regardless of bot enabled status
-            #scan for login screens
-            loginscreen = utils.multi_match(frame, LOGIN_SCREEN, 0.7)
-            if loginscreen != []:
-                autoLoginToggle = AutomationParams('Automation Settings').get("auto_login2FA_toggle")
-                if autoLoginToggle:
-                    automation.autoLogin()
-            
-            #scan for secondPW screens
-            secondPWscreen = utils.multi_match(frame, SECONDPW_SCREEN, 0.8)
-            if secondPWscreen != []:
-                autosecondaryToggle = AutomationParams('Automation Settings').get("auto_2ndPW_toggle")
-                if autosecondaryToggle:
-                    automation.auto2ndPW()
+            # Update GUI flags regardless of bot enabled state
+            if hasattr(config, 'gui') and config.gui and hasattr(config.gui, 'runtime'):
+                config.gui.runtime.runtimeFlags.update_All_Flags()
 
             time.sleep(0.1)
-
 
     def _alert(self, name, volume=0.75):
         """
-        Plays an alert to notify user of a dangerous event. Stops the alert
-        once the key bound to 'Start/stop' is pressed.
+        Plays an alert to notify user of a dangerous in-game event. Alerts are stored
+        as .mp3 files in the /assets/alerts directory.
+        :param name:    The name of the alert mp3 file, excluding the file extension.
+        :param volume:  A float between 0 and 1 denoting the volume level.
+        :return:        None
         """
 
-        config.enabled = False
-        config.listener.enabled = False
-        self.mixer.load(get_alert_path(name))
-        self.mixer.set_volume(volume)
-        self.mixer.play(-1)
-        
-        # Cross-platform key detection
-        while True:
-            if platform.system() == "Darwin" and KEYBOARD_AVAILABLE:
-                # macOS: Use pynput key states
-                if config.listener.key_states.get(config.listener.config['Start/stop'], False):
-                    break
-            elif KEYBOARD_AVAILABLE:
-                # Windows/Linux: Use keyboard library
-                if kb.is_pressed(config.listener.config['Start/stop']):
-                    break
+        def play_on_repeat():
+            for _ in range(3):
+                self._ping(name, volume)
+                time.sleep(1.3)
+
+        if config.enabled:
+            alert_path = get_alert_path(name)
+            if os.path.isfile(alert_path):
+                print(f'\n[!] Playing alert: "{name}"')
+                thread = threading.Thread(target=play_on_repeat)
+                thread.daemon = True
+                thread.start()
             else:
-                # Fallback: wait for a fixed time
-                time.sleep(5)
-                break
-            time.sleep(0.1)
-            
-        self.mixer.stop()
-        time.sleep(2)
-        config.listener.enabled = True
+                print(f'\n[!] Could not find alert: "{name}"')
 
     def _ping(self, name, volume=0.5):
-        """A quick notification for non-dangerous events."""
+        """
+        Plays a short sound clip to notify user of an in-game event. Alerts are stored
+        as .mp3 files in the /assets/alerts directory.
+        :param name:    The name of the alert mp3 file, excluding the file extension.
+        :param volume:  A float between 0 and 1 denoting the volume level.
+        :return:        None
+        """
 
-        self.mixer.load(get_alert_path(name))
-        self.mixer.set_volume(volume)
-        self.mixer.play()
-
-
-#################################
-#       Helper Functions        #
-#################################
-def distance_to_rune(point):
-    """
-    Calculates the distance from POINT to the rune.
-    :param point:   The position to check.
-    :return:        The distance from POINT to the rune, infinity if it is not a Point object.
-    """
-
-    if isinstance(point, Point):
-        return utils.distance(config.bot.rune_pos, point.location)
-    return float('inf')
+        alert_path = get_alert_path(name)
+        if os.path.isfile(alert_path):
+            try:
+                import pygame
+                pygame.mixer.init()
+                pygame.mixer.music.load(alert_path)
+                pygame.mixer.music.set_volume(volume)
+                pygame.mixer.music.play()
+            except ImportError:
+                print("[WARN] pygame not available for audio alerts")
+            except Exception as e:
+                print(f"[WARN] Could not play alert: {e}")
+        else:
+            print(f'\n[!] Could not find alert: "{name}"')

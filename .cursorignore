@@ -1,0 +1,54 @@
+# Asset directories
+assets/
+
+# Virtual environments
+venv/
+venv312/
+
+# Testing artifacts
+testing/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Git
+.git/
+
+# IDE files
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Binary files
+*.dll
+*.so
+*.dylib
+
+# Log files
+*.log
+
+# Backup files
+*.backup
+*.bak
+
+# Temporary files
+*.tmp
+*.temp
+
+# Configuration backups
+*.json.backup
+window_config.json.backup
+minimap_config.json.backup

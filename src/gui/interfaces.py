@@ -6,23 +6,6 @@ from tkinter import ttk
 from src.common import utils
 from src.common.interfaces import Configurable
 
-# Cross-platform keyboard input handling
-if platform.system() == "Darwin":  # macOS
-    try:
-        import pynput
-        from pynput import keyboard as kb_listener
-        KEYBOARD_AVAILABLE = True
-    except ImportError:
-        print("[WARN] pynput not available on macOS. Install with: pip install pynput")
-        KEYBOARD_AVAILABLE = False
-else:
-    try:
-        import keyboard as kb
-        KEYBOARD_AVAILABLE = True
-    except ImportError:
-        print("[WARN] keyboard library not available")
-        KEYBOARD_AVAILABLE = False
-
 
 class Frame(tk.Frame):
     def __init__(self, parent, **kwargs):
@@ -166,19 +149,11 @@ class KeyBindings(LabelFrame):
         label.config(state=tk.DISABLED)
 
         def on_key_press(_):
-            if platform.system() == "Darwin" and KEYBOARD_AVAILABLE:
-                # macOS: Use a simple input dialog for key binding
-                # This is a workaround since pynput doesn't have a simple read_key equivalent
-                import tkinter.simpledialog
-                k = tkinter.simpledialog.askstring("Key Binding", f"Press a key for '{action}':")
-                if k is None:
-                    return
-            elif KEYBOARD_AVAILABLE:
-                # Windows/Linux: Use keyboard library
-                k = kb.read_key()
-            else:
-                # Fallback: Use tkinter key events
-                k = "unknown"
+            # Simple key input dialog for key binding
+            import tkinter.simpledialog
+            k = tkinter.simpledialog.askstring("Key Binding", f"Press a key for '{action}':")
+            if k is None:
+                return
             
             if action != self.prev_a:
                 self.prev_k = ''
